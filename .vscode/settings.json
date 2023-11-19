@@ -1,0 +1,25 @@
+{
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#fff000",
+        "activityBar.foreground": "#000000",
+        "titleBar.activeForeground": "#ffff00",
+        "titleBar.activeBackground": "#000000",
+    },
+    "editor.formatOnSave": true,
+    "cSpell.words": [
+        "ARBISCAN",
+        "bignumber",
+        "Cheatcodes",
+        "dont",
+        "mixedcase",
+        "nomicfoundation",
+        "nomiclabs",
+        "Numberish",
+        "POLYGONSCAN",
+        "precommit",
+        "Snapshotter",
+        "telos",
+        "TELOSSCAN",
+        "WBNB"
+    ]
+}

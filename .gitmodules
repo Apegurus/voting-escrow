@@ -1,0 +1,6 @@
+[submodule "modules/lib/forge-std"]
+	path = modules/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "modules/semgrep-smart-contracts"]
+	path = modules/semgrep-smart-contracts
+	url = https://github.com/Decurity/semgrep-smart-contracts.git

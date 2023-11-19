@@ -1,0 +1,6 @@
+[profile.default]
+src = 'contracts'
+test = 'test'
+out = 'artifacts/contracts'
+libs = ['modules/lib']
+gas_reports = ["*"]
