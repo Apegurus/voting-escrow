@@ -115,6 +115,13 @@
   dependencies:
     "@jridgewell/trace-mapping" "0.3.9"
 
+"@erc-5725/interfaces@^1.1.2":
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/@erc-5725/interfaces/-/interfaces-1.1.2.tgz#caf6bd1295a341c875b530b8feda005623e0ae5f"
+  integrity sha512-Rd7PyPqrhPFKjZz+2ar3uJaQznPFdCSWBt5XJZ5/FqfeZdPm6BaCzYUxgmSrLlM8X/M87E2K5nI7RWis1piqCQ==
+  dependencies:
+    "@openzeppelin/contracts" "^5.0.0"
+
 "@ethersproject/abi@5.7.0", "@ethersproject/abi@^5.0.0-beta.146", "@ethersproject/abi@^5.0.9", "@ethersproject/abi@^5.1.2", "@ethersproject/abi@^5.4.7", "@ethersproject/abi@^5.6.3", "@ethersproject/abi@^5.7.0":
   version "5.7.0"
   resolved "https://registry.yarnpkg.com/@ethersproject/abi/-/abi-5.7.0.tgz#b3f3e045bbbeed1af3947335c247ad625a44e449"
