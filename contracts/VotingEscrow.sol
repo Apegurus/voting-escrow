@@ -6,10 +6,14 @@ pragma solidity ^0.8.20;
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {ERC5725} from "./erc5725/ERC5725.sol";
 import {Votes} from "@openzeppelin/contracts/governance/utils/Votes.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC5725} from "./erc5725/ERC5725.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
+import {BalanceLogicLibrary} from "./libraries/BalanceLogicLibrary.sol";
+import {EscrowVotes} from "./systems/EscrowVotes.sol";
+import {EscrowStorage} from "./systems/EscrowStorage.sol";
 
 /**
  * @dev Extension of ERC721 to support voting and delegation as implemented by {Votes}, where each individual NFT counts
@@ -19,7 +23,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * on every transfer. Token holders can either delegate to a trusted representative who will decide how to make use of
  * the votes in governance decisions, or they can delegate to themselves to be their own representative.
  */
-contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
+contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
     using SafeERC20 for IERC20;
     IERC20 public token;
 
@@ -38,7 +42,7 @@ contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         address previousOwner = super._update(to, tokenId, auth);
 
-        _transferVotingUnits(previousOwner, to, 1);
+        // _transferVotingUnits(previousOwner, to, 1);
 
         return previousOwner;
     }
@@ -48,18 +52,11 @@ contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
      * ERC-5725 and token-locking logic
      */
 
-
-    struct LockDetails {
-        uint256 amount; /// @dev amount of tokens locked
-        uint128 startTime; /// @dev when locking started
-        uint128 endTime; /// @dev when locking ends
-        // TODO: Permanent lock?
-    }
     
     mapping(uint256 => LockDetails) public lockDetails; /// @dev maps the vesting data with tokenIds
 
     /// @dev tracker of current NFT id
-    uint256 private _tokenIdTracker;
+    uint256 private _tokenIdTracker = 1;
 
     /**
      * @notice Creates a new vesting NFT and mints it
@@ -138,8 +135,7 @@ contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
         // or if the lock is a permanent lock, then _oldLocked.end == 0
         // value == 0 (extend lock) or value > 0 (add to lock or extend lock)
         // newLocked.end > block.timestamp (always)
-        
-        // _checkpoint(_tokenId, _oldLocked, newLocked);
+        _checkpoint(_tokenId, _oldLocked, newLocked);
 
         address from = _msgSender();
         if (_value != 0) {
@@ -150,9 +146,39 @@ contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
         // emit Supply(supplyBefore, supplyBefore + _value);
     }
 
-    /**
-     * @dev See {IERC5725}.
-     */
+     /*///////////////////////////////////////////////////////////////
+                           GAUGE VOTING STORAGE
+    //////////////////////////////////////////////////////////////*/
+
+    // function _balanceOfNFTAt(uint256 _tokenId, uint256 _t) internal view returns (uint256) {
+    //     return BalanceLogicLibrary.balanceOfNFTAt(userPointEpoch, _userPointHistory, _tokenId, _t);
+    // }
+
+    // function _supplyAt(uint256 _timestamp) internal view returns (uint256) {
+    //     return BalanceLogicLibrary.supplyAt(slopeChanges, _pointHistory, 0, _timestamp);
+    // }
+
+    // function balanceOfNFT(uint256 _tokenId) public view returns (uint256) {
+    //     // if (ownershipChange[_tokenId] == block.number) return 0;
+    //     return _balanceOfNFTAt(_tokenId, block.timestamp);
+    // }
+
+    // function balanceOfNFTAt(uint256 _tokenId, uint256 _t) external view returns (uint256) {
+    //     return _balanceOfNFTAt(_tokenId, _t);
+    // }
+
+    // function totalSupply() external view returns (uint256) {
+    //     return _supplyAt(block.timestamp);
+    // }
+
+    // function totalSupplyAt(uint256 _timestamp) external view returns (uint256) {
+    //     return _supplyAt(_timestamp);
+    // }
+
+     /*///////////////////////////////////////////////////////////////
+                           @dev See {IERC5725}.
+    //////////////////////////////////////////////////////////////*/
+
     function vestedPayoutAtTime(
         uint256 tokenId,
         uint256 timestamp
@@ -202,7 +228,7 @@ contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
      *
      * WARNING: Overriding this function will likely result in incorrect vote tracking.
      */
-    function _getVotingUnits(address account) internal view virtual override returns (uint256) {
+    function _getVotingUnits(address account) internal view virtual returns (uint256) {
         return balanceOf(account);
     }
 
@@ -211,6 +237,6 @@ contract VotingEscrow is ERC5725, Votes, ReentrancyGuard {
      */
     function _increaseBalance(address account, uint128 amount) internal virtual override {
         super._increaseBalance(account, amount);
-        _transferVotingUnits(address(0), account, amount);
+        // _transferVotingUnits(address(0), account, amount);
     }
 }
