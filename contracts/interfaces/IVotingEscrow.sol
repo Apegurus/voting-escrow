@@ -8,9 +8,9 @@ import {IVotes} from "./IVotes.sol";
 
 interface IVotingEscrow {
     struct LockDetails {
-        uint256 amount; /// @dev amount of tokens locked
-        uint128 startTime; /// @dev when locking started
-        uint128 endTime; /// @dev when locking ends
+        int128 amount; /// @dev amount of tokens locked
+        uint256 startTime; /// @dev when locking started
+        uint256 endTime; /// @dev when locking ends
         bool isPermanent;
         // TODO: Permanent lock?
     }

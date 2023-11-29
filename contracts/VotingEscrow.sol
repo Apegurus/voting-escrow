@@ -12,8 +12,9 @@ import {ERC5725} from "./erc5725/ERC5725.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 import {BalanceLogicLibrary} from "./libraries/BalanceLogicLibrary.sol";
+import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
 import {EscrowVotes} from "./systems/EscrowVotes.sol";
-import {EscrowStorage} from "./systems/EscrowStorage.sol";
+import "hardhat/console.sol";
 
 /**
  * @dev Extension of ERC721 to support voting and delegation as implemented by {Votes}, where each individual NFT counts
@@ -25,12 +26,20 @@ import {EscrowStorage} from "./systems/EscrowStorage.sol";
  */
 contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
     using SafeERC20 for IERC20;
+    using SafeCastLibrary for uint256;
+    using SafeCastLibrary for int128;
     IERC20 public token;
+    // using SafeCastLibrary for uint256;
 
     // Total locked supply
-    uint256 public supply;
+    int128 public supply;
 
-    constructor(string memory name, string memory symbol, string memory version, IERC20 mainToken) ERC721(name, symbol) EIP712(name, version) {
+    constructor(
+        string memory name,
+        string memory symbol,
+        string memory version,
+        IERC20 mainToken
+    ) ERC721(name, symbol) EIP712(name, version) {
         token = mainToken;
     }
 
@@ -46,13 +55,12 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
 
         return previousOwner;
     }
-    
+
     /**
-     * 
+     *
      * ERC-5725 and token-locking logic
      */
 
-    
     mapping(uint256 => LockDetails) public lockDetails; /// @dev maps the vesting data with tokenIds
 
     /// @dev tracker of current NFT id
@@ -65,7 +73,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
      * @param duration Duration in seconds of the lock
      * @param to The reseiver of the lock
      */
-    function _createLock(uint256 value, uint128 duration, address to) internal virtual returns (uint256) {
+    function _createLock(int128 value, uint256 duration, address to) internal virtual returns (uint256) {
         require(to != address(0), "to cannot be address 0");
         require(duration > 0, "release must be in future");
 
@@ -76,7 +84,9 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         // if (unlockTime > block.timestamp + MAXTIME) revert LockDurationTooLong();
 
         uint256 newTokenId = _tokenIdTracker;
-        uint128 unlockTime = uint128(block.timestamp) + duration;
+        uint256 unlockTime = toGlobalClock(block.timestamp + duration);
+
+        console.log("End time s%", unlockTime);
 
         // lockDetails[newTokenId] = LockDetails({
         //     amount: value,
@@ -91,13 +101,13 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         return newTokenId;
     }
 
-    /// 
-    function createLock(uint256 _value, uint128 _lockDuration) external nonReentrant returns (uint256) {
+    ///
+    function createLock(int128 _value, uint256 _lockDuration) external nonReentrant returns (uint256) {
         return _createLock(_value, _lockDuration, _msgSender());
     }
 
     ///
-    function createLockFor(uint256 _value, uint128 _lockDuration, address _to) external nonReentrant returns (uint256) {
+    function createLockFor(int128 _value, uint256 _lockDuration, address _to) external nonReentrant returns (uint256) {
         return _createLock(_value, _lockDuration, _to);
     }
 
@@ -106,13 +116,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
     /// @param _value Amount to deposit
     /// @param _unlockTime New time when to unlock the tokens, or 0 if unchanged
     /// @param _oldLocked Previous locked amount / timestamp
-    function _depositFor(
-        uint256 _tokenId,
-        uint256 _value,
-        uint128 _unlockTime,
-        LockDetails memory _oldLocked
-    ) internal {
-        uint256 supplyBefore = supply;
+    function _depositFor(uint256 _tokenId, int128 _value, uint256 _unlockTime, LockDetails memory _oldLocked) internal {
+        int128 supplyBefore = supply;
         supply = supplyBefore + _value;
 
         // Set newLocked to _oldLocked without mangling memory
@@ -135,18 +140,72 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         // or if the lock is a permanent lock, then _oldLocked.end == 0
         // value == 0 (extend lock) or value > 0 (add to lock or extend lock)
         // newLocked.end > block.timestamp (always)
-        _checkpoint(_tokenId, _oldLocked, newLocked);
+        _checkpointLock(_tokenId, _oldLocked, newLocked);
 
         address from = _msgSender();
         if (_value != 0) {
-            token.safeTransferFrom(from, address(this), _value);
+            token.safeTransferFrom(from, address(this), _value.toUint256());
         }
 
         // emit Deposit(from, _tokenId, _depositType, _value, newLocked.end, block.timestamp);
         // emit Supply(supplyBefore, supplyBefore + _value);
     }
 
-     /*///////////////////////////////////////////////////////////////
+    /// @notice Record global and per-user data to checkpoints. Used by VotingEscrow system.
+    /// @param _tokenId NFT token ID. No user checkpoint if 0
+    /// @param _oldLocked Pevious locked amount / end lock time for the user
+    /// @param _newLocked New locked amount / end lock time for the user
+    function _checkpointLock(
+        uint256 _tokenId,
+        IVotingEscrow.LockDetails memory _oldLocked,
+        IVotingEscrow.LockDetails memory _newLocked
+    ) internal {
+        int128 uOldBias;
+        int128 uOldSlope;
+        int128 uNewBias;
+        int128 uNewSlope;
+        // console.log("Running checkpoint %s from %s to %s okens", _tokenId, _newLocked.amount);
+
+        if (_tokenId != 0) {
+            // Calculate slopes and biases
+            // Kept at zero when they have to
+            if (_oldLocked.endTime > block.timestamp && _oldLocked.amount > 0) {
+                console.log("1 End Time %s -- Diff %s", _oldLocked.endTime, _oldLocked.endTime - block.timestamp);
+                uOldSlope = (_oldLocked.amount * PRECISSION) / MAXTIME;
+                uOldBias = (uOldSlope * (_oldLocked.endTime - block.timestamp).toInt128()) / PRECISSION;
+                // console.log("2 testBias %s -- testSlope %s", uOldSlope, uOldBias);
+            }
+            if (_newLocked.endTime > block.timestamp && _newLocked.amount > 0) {
+                console.log("2 End Time %s -- Diff %s", _newLocked.endTime, _newLocked.endTime - block.timestamp);
+                uNewSlope = (_newLocked.amount * PRECISSION) / MAXTIME;
+                uNewBias = (uNewSlope * (_newLocked.endTime - block.timestamp).toInt128()) / PRECISSION;
+                // console.log("2 testBias %s -- testSlope %s", uNewBias, uNewSlope);
+            }
+        }
+        _checkpoint(_tokenId, uOldBias, uOldSlope, uNewBias, uNewSlope, _oldLocked.endTime, _newLocked.endTime);
+        _delegate(_tokenId, _tokenId, uNewBias, uNewSlope);
+    }
+
+    function delegate(uint256 delegator, uint256 delegatee) external override {
+        int128 slope = (lockDetails[delegator].amount * PRECISSION) / MAXTIME;
+        int128 bias = ((slope * (lockDetails[delegator].endTime - block.timestamp).toInt128())) / PRECISSION;
+        _userCheckpoint(delegator, bias, slope);
+        _delegate(delegator, delegatee, bias, slope);
+    }
+
+    /// @notice Get the current voting power for `_tokenId`
+    /// @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
+    ///      Fetches last user point prior to a certain timestamp, then walks forward to timestamp.
+    /// @param _tokenId NFT for lock
+    /// @param _timestamp Epoch time to return voting power at
+    /// @return balance ser voting power
+    function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
+        if (lockDetails[_tokenId].endTime < _timestamp) return 0;
+        int128 slope = (lockDetails[_tokenId].amount * PRECISSION) / MAXTIME;
+        balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / PRECISSION;
+    }
+
+    /*///////////////////////////////////////////////////////////////
                            GAUGE VOTING STORAGE
     //////////////////////////////////////////////////////////////*/
 
@@ -175,7 +234,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
     //     return _supplyAt(_timestamp);
     // }
 
-     /*///////////////////////////////////////////////////////////////
+    /*///////////////////////////////////////////////////////////////
                            @dev See {IERC5725}.
     //////////////////////////////////////////////////////////////*/
 
@@ -200,7 +259,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
      * @dev See {ERC5725}.
      */
     function _payout(uint256 tokenId) internal view override returns (uint256) {
-        return lockDetails[tokenId].amount;
+        return lockDetails[tokenId].amount.toUint256();
     }
 
     /**
@@ -218,10 +277,9 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
     }
 
     /**
-     * 
+     *
      * ALL THE GOVERNANCE SHIT
      */
-
 
     /**
      * @dev Returns the balance of `account`.
