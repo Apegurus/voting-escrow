@@ -24,23 +24,16 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
 
     int128 internal constant MAXTIME = 2 * 365 * 86400;
     int128 internal constant PRECISSION = 1e12;
+    uint48 public constant CLOCK_UNIT = 1 days;
 
     StructCheckpoints.Trace private _globalCheckpoints;
-    // Checkpoints.Trace208 private _totalCheckpointsSlope; // epoch -> unsigned global point
+    mapping(uint256 => int128) public _globalSlopeChanges;
 
-    mapping(uint256 tokenId => Checkpoints.Trace208) private _userCheckpointsBias;
-    mapping(uint256 tokenId => Checkpoints.Trace208) private _userCheckpointsSlope;
+    mapping(uint256 tokenId => StructCheckpoints.Trace) private _userCheckpoints;
 
-    mapping(uint256 delegatee => Checkpoints.Trace208) private _delegateCheckpointsBias;
-    mapping(uint256 delegatee => Checkpoints.Trace208) private _delegateCheckpointsSlope;
+    mapping(uint256 delegatee => StructCheckpoints.Trace) private _delegateCheckpoints;
     mapping(uint256 tokenId => Checkpoints.Trace208) private _delegatee;
-
-    mapping(uint256 => int128) public _slopeChanges;
-
-    // mapping(uint48 checkPoint => uint256 tokenId) private _delegateCheckpointsTokenId;
-
-    // mapping(uint256 => IVotingEscrow.UserPoint[1000000000000]) internal _delegatedPointHistory;
-    // mapping(uint256 => uint256) public delegatedPointEpoch;
+    mapping(uint256 tokenId => mapping(uint256 => int128)) public _delegateeSlopeChanges;
 
     uint256 public permanentLockBalance;
 
@@ -69,14 +62,14 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
      * @dev Clock used for flagging global checkpoints.
      */
     function globalClock() public view virtual returns (uint48) {
-        return (Time.timestamp() / 1 days) * 1 days;
+        return (Time.timestamp() / CLOCK_UNIT) * CLOCK_UNIT;
     }
 
     /**
      * @dev Clock used for flagging global checkpoints.
      */
     function toGlobalClock(uint256 _timestamp) public pure virtual returns (uint48) {
-        return uint48((_timestamp / 1 days) * 1 days);
+        return uint48((_timestamp / CLOCK_UNIT) * CLOCK_UNIT);
     }
 
     /**
@@ -93,35 +86,45 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
 
     /// @notice Record global and per-user data to checkpoints. Used by VotingEscrow system.
     /// @param _tokenId NFT token ID. No user checkpoint if 0
-    /// @param uOldBias Pevious locked amount / end lock time for the user
-    /// @param uOldSlope New locked amount / end lock time for the user
-    /// @param uNewBias New locked amount / end lock time for the user
-    /// @param uNewSlope New locked amount / end lock time for the user
+    /// @param uOladamount Pevious locked amount / end lock time for the user
+    /// @param uNewAmount New locked amount / end lock time for the user
+    /// @param uOldEndTime New locked amount / end lock time for the user
+    /// @param uNewEndTime New locked amount / end lock time for the user
     function _checkpoint(
         uint256 _tokenId,
-        int128 uOldBias,
-        int128 uOldSlope,
-        int128 uNewBias,
-        int128 uNewSlope,
+        int128 uOladamount,
+        int128 uNewAmount,
         uint256 uOldEndTime,
         uint256 uNewEndTime
     ) internal {
         int128 oldDslope = 0;
         int128 newDslope = 0;
-
-        // Go over weeks to fill history and calculate what the current point is
-        _globalCheckpoint(_tokenId, uOldBias, uOldSlope, uNewBias, uNewSlope);
-
-        uOldEndTime = toGlobalClock(uOldEndTime);
+        int128 uOldBias;
+        int128 uOldSlope;
+        int128 uNewBias;
+        int128 uNewSlope;
+        /// @notice if this is not rounded to days the system will not be able to handle much time without checkpoints
         uNewEndTime = toGlobalClock(uNewEndTime);
 
         if (_tokenId != 0) {
-            oldDslope = _slopeChanges[uOldEndTime];
+            // Calculate slopes and biases
+            // Kept at zero when they have to
+            if (uOldEndTime > block.timestamp && uOladamount > 0) {
+                console.log("1 End Time %s -- Diff %s", uOldEndTime, uOldEndTime - block.timestamp);
+                uOldSlope = (uOladamount * PRECISSION) / MAXTIME;
+                uOldBias = (uOldSlope * (uOldEndTime - block.timestamp).toInt128()) / PRECISSION;
+            }
+            if (uNewEndTime > block.timestamp && uNewAmount > 0) {
+                console.log("2 End Time %s -- Diff %s", uNewEndTime, uNewEndTime - block.timestamp);
+                uNewSlope = (uNewAmount * PRECISSION) / MAXTIME;
+                uNewBias = (uNewSlope * (uNewEndTime - block.timestamp).toInt128()) / PRECISSION;
+            }
+            oldDslope = _globalSlopeChanges[uOldEndTime];
             if (uNewEndTime != 0) {
                 if (uNewEndTime == uOldEndTime) {
                     newDslope = oldDslope;
                 } else {
-                    newDslope = _slopeChanges[uNewEndTime];
+                    newDslope = _globalSlopeChanges[uNewEndTime];
                 }
             }
 
@@ -134,7 +137,7 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
                 if (uOldEndTime == uNewEndTime) {
                     oldDslope -= uNewSlope; // It was a new deposit, not extension
                 }
-                _slopeChanges[uOldEndTime] = oldDslope;
+                _globalSlopeChanges[uOldEndTime] = oldDslope;
                 console.log("Pushed slope: %s to change: %s", uOldEndTime);
                 console.logInt(oldDslope);
             }
@@ -143,42 +146,15 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
                 // update slope if new lock is greater than old lock and is not permanent or if old lock is permanent
                 if ((uNewEndTime > uOldEndTime)) {
                     newDslope -= uNewSlope; // old slope disappeared at this point
-                    _slopeChanges[uNewEndTime] = newDslope;
+                    _globalSlopeChanges[uNewEndTime] = newDslope;
                     console.log("Pushed slope: %s to change: %s", uNewEndTime);
                     console.logInt(newDslope);
                 }
                 // else: we recorded it already in oldDslope
             }
 
-            // Schedule the slope changes (slope is going down)
-            // We subtract new_user_slope from [_newLocked.endTime]
-            // and add old_user_slope to [_oldLocked.endTime]
-            // if (_oldLocked.endTime > block.timestamp) {
-            //     // oldDslope was <something> - uOld.slope, so we cancel that
-            //     oldDslope += uOld.slope;
-            //     if (_newLocked.endTime == _oldLocked.endTime) {
-            //         oldDslope -= uNew.slope; // It was a new deposit, not extension
-            //     }
-            //     slopeChanges[_oldLocked.endTime] = oldDslope;
-            // }
-
-            // if (_newLocked.endTime > block.timestamp) {
-            //     // update slope if new lock is greater than old lock and is not permanent or if old lock is permanent
-            //     if ((_newLocked.endTime > _oldLocked.endTime)) {
-            //         newDslope -= uNew.slope; // old slope disappeared at this point
-            //         slopeChanges[_newLocked.endTime] = newDslope;
-            //     }
-            //     // else: we recorded it already in oldDslope
-            // }
-            // If timestamp of last user point is the same, overwrite the last user point
-            // Else record the new user point into history
-            // Exclude epoch 0
-
-            // If
-            // (, uint lastUserCheckPoint, uint256 lastUserBias) = _userCheckpointsBias[_tokenId].latestCheckpoint();
-            // (, , uint256 lastUserSlope) = _userCheckpointsBias[_tokenId].latestCheckpoint();
-
             _userCheckpoint(_tokenId, uNewBias, uNewSlope);
+
             // (, uint DelegateTs, uint delegateeTokenId) = _delegatee[_tokenId].latestCheckpoint();
 
             // if (DelegateTs != 0) {
@@ -194,11 +170,12 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
             //     _push(_delegateCheckpointsSlope[delegateeTokenId], SafeCast.toUint208(preSlope + uNewSlope));
             // }
         }
+
+        _globalCheckpoint(_tokenId, uOldBias, uOldSlope, uNewBias, uNewSlope);
     }
 
     function _userCheckpoint(uint256 _tokenId, int128 bias, int128 slope) internal {
-        _push(_userCheckpointsBias[_tokenId], SafeCast.toUint208(uint128(bias)));
-        _push(_userCheckpointsSlope[_tokenId], SafeCast.toUint208(uint128(slope)));
+        _pushStruct(_userCheckpoints[_tokenId], StructCheckpoints.Point({bias: bias, slope: slope, permanent: 0}));
     }
 
     function _globalCheckpoint(
@@ -208,10 +185,37 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
         int128 uNewBias,
         int128 uNewSlope
     ) internal {
-        (, uint lastPoint, StructCheckpoints.Point memory lastGlobal) = _globalCheckpoints.latestCheckpoint();
-        int128 lastSlope = lastGlobal.slope;
-        int128 lastBias = lastGlobal.bias;
-        uint lastCheckpoint = lastPoint != 0 ? lastPoint : block.timestamp;
+        (, uint48 lastPoint, StructCheckpoints.Point memory lastGlobal) = _globalCheckpoints.latestCheckpoint();
+        uint48 lastCheckpoint = lastPoint != 0 ? lastPoint : uint48(block.timestamp);
+
+        {
+            // Go over weeks to fill history and calculate what the current point is
+            uint48 t_i = toGlobalClock(lastCheckpoint);
+
+            while (t_i != block.timestamp) {
+                // LMAO Premium solidity dev over here
+                t_i += CLOCK_UNIT;
+                int128 dSlope = 0;
+                if (t_i > block.timestamp) {
+                    t_i = uint48(block.timestamp);
+                } else {
+                    dSlope = _globalSlopeChanges[t_i];
+                }
+                if (dSlope != 0) {
+                    console.log(
+                        "Last slope %s - Last Bias: %s - Clock() %s",
+                        lastGlobal.slope.toUint256(),
+                        lastGlobal.bias.toUint256(),
+                        t_i
+                    );
+                    lastGlobal.bias -= ((lastGlobal.slope * uint256(t_i - lastCheckpoint).toInt128()) / PRECISSION);
+                    lastGlobal.slope += dSlope;
+                    lastCheckpoint = uint48(t_i);
+                    // _pushStruct(_globalCheckpoints, lastGlobal);
+                    _globalCheckpoints.push(lastCheckpoint, lastGlobal);
+                }
+            }
+        }
 
         console.log(
             "Running checkpoint %s from %s to %s Bias",
@@ -224,12 +228,12 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
             console.log(
                 "Running globalUpdate %s - bias: %s - slope: %s",
                 lastPoint,
-                lastBias.toUint256(),
-                lastSlope.toUint256()
+                lastGlobal.bias.toUint256(),
+                lastGlobal.slope.toUint256()
             );
 
-            int128 preBias = lastBias - uOldBias;
-            int128 preSlope = lastSlope - uOldSlope;
+            int128 preBias = lastGlobal.bias - uOldBias;
+            int128 preSlope = lastGlobal.slope - uOldSlope;
 
             console.log(
                 "Running globalUpdate %s - preBias: %s - preSlope: %s",
@@ -246,44 +250,28 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
                 uNewBias.toUint256()
             );
 
-            lastSlope = preSlope + uNewSlope;
-            lastBias = baseBias + uNewBias;
-            // TODO: Consider what happens with different indexes
-            // _push(_totalCheckpointsSlope, SafeCast.toUint208(lastSlope));
+            lastGlobal.slope = preSlope + uNewSlope;
+            lastGlobal.bias = baseBias + uNewBias;
         } else {
             uint t_i = block.timestamp; // Initial value of t_i is always larger than the ts of the last point
-            lastBias -= (lastSlope * (t_i - lastCheckpoint).toInt128()) / PRECISSION;
+            lastGlobal.bias -= (lastGlobal.slope * (t_i - lastCheckpoint).toInt128()) / PRECISSION;
         }
-
-        lastGlobal.slope = lastSlope;
-        lastGlobal.bias = lastBias;
 
         console.log(
             "Ran globalUpdate %s - bias: %s - slope: %s",
             lastPoint,
-            lastBias.toUint256(),
-            lastSlope.toUint256()
+            lastGlobal.bias.toUint256(),
+            lastGlobal.slope.toUint256()
         );
 
         _pushStruct(_globalCheckpoints, lastGlobal);
 
-        // console.log("New Global Bias %s - New Glognal Slope: %s - Checkpoint: %s", lastBias, lastSlope, clock());
-
-        // If timestamp of last global point is the same, overwrite the last global point
-        // Else record the new global point into history
-        // Exclude epoch 0 (note: _epoch is always >= 1, see above)
-        // Two possible outcomes:
-        // Missing global checkpoints in prior weeks. In this case, _epoch = epoch + x, where x > 1
-        // No missing global checkpoints, but timestamp != block.timestamp. Create new checkpoint.
-        // No missing global checkpoints, but timestamp == block.timestamp. Overwrite last checkpoint.
-        // if (epoch != 1 && _pointHistory[epoch - 1].ts == block.timestamp) {
-        //     // _epoch = epoch + 1, so we do not increment epoch
-        //     _pointHistory[epoch - 1] = lastPoint;
-        // } else {
-        //     // more than one global point may have been written, so we update epoch
-        //     epoch = epoch;
-        //     _pointHistory[epoch] = lastPoint;
-        // }
+        console.log(
+            "New Global Bias %s - New Glognal Slope: %s - Checkpoint: %s",
+            lastGlobal.bias.toUint256(),
+            lastGlobal.slope.toUint256(),
+            clock()
+        );
     }
 
     function getVotes(uint256 tokenId) external view override returns (uint256) {}
@@ -294,17 +282,14 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     /// @param _tokenId .
     /// @param _timestamp .
     /// @return votes Total voting balance including delegations at a given timestamp.
-    function getPastVotes(uint256 _tokenId, uint256 _timestamp) external view returns (uint256 votes) {
+    function getPastVotes(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
         uint48 clockTime = SafeCast.toUint48(_timestamp);
-        (bool exists, uint ts, uint lastBias) = _delegateCheckpointsBias[_tokenId].upperLookupRecent(clockTime);
-        console.log("Clock Time %s - lastBiasUp: %s", clockTime);
+        (bool exists, uint ts, StructCheckpoints.Point memory lastPoint) = _delegateCheckpoints[_tokenId]
+            .upperLookupRecent(clockTime);
         if (!exists) return 0;
-        (, , uint lastSlope) = _delegateCheckpointsSlope[_tokenId].upperLookupRecent(clockTime);
-        console.log("Last Bias %s - Checkpoint: %s - Clock() %s", lastBias, ts, clock());
-        console.log("Last Slope %s - User Time: %s", lastSlope, ts);
-        uint change = (((lastSlope * (_timestamp - ts)) / PRECISSION.toUint256()));
-        votes = lastBias < change ? 0 : lastBias - change;
-        return votes;
+        int128 change = (((lastPoint.slope * (_timestamp - ts).toInt128()) / PRECISSION));
+        int128 votes = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
+        return votes.toUint256();
     }
 
     function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {}
@@ -327,11 +312,11 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
 
     /// @notice Record user delegation checkpoints. Used by voting system.
     /// @dev Skips delegation if already delegated to `delegatee`.
-    function _delegate(uint256 _delegator, uint256 delegatee, int128 uBias, int128 uSlope) internal {
+    function _delegate(uint256 _delegator, uint256 delegatee) internal {
         uint256 currentDelegate = _delegatee[_delegator].latest();
         if (currentDelegate == delegatee) return;
 
-        _checkpointDelegator(_delegator, delegatee, uBias, uSlope);
+        _checkpointDelegator(_delegator, delegatee);
 
         // emit DelegateChanged(_msgSender(), currentDelegate, delegatee);
     }
@@ -343,26 +328,26 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     ///      If you wish to dedelegate only, use `_delegate(tokenId, 0)` instead.
     /// @param _delegator The delegator to update checkpoints for
     /// @param delegatee The new delegatee for the delegator. Cannot be equal to `_delegator` (use 0 instead).
-    function _checkpointDelegator(uint256 _delegator, uint256 delegatee, int128 uBias, int128 uSlope) internal {
-        // (, uint ts, uint uBias) = _userCheckpointsBias[_delegator].latestCheckpoint();
-        // (, , uint uSlope) = _userCheckpointsSlope[_delegator].latestCheckpoint();
-
-        // console.log("Last Bias %s - Checkpoint: %s - Clock() %s", uBias, uSlope, clock());
-        // console.log("Last Slope %s", uSlope);
-        // uBias -= ((uSlope * (block.timestamp - ts)) / PRECISSION);
-        // if (uBias < 0) {
-        //     uBias = 0;
-        // }
+    function _checkpointDelegator(uint256 _delegator, uint256 delegatee) internal {
+        (, uint ts, StructCheckpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
+        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISSION);
+        if (lastPoint.bias < 0) {
+            lastPoint.bias = 0;
+        }
 
         // Dedelegate from delegatee if delegated
         uint256 oldDelegatee = _delegatee[_delegator].latest();
-        console.log("Old Delegatee %s - Ubias: %s - uSlope: %s", oldDelegatee, uBias.toUint256(), uSlope.toUint256());
-        if (oldDelegatee != delegatee && oldDelegatee != 0) _checkpointDelegatee(oldDelegatee, uBias, uSlope, false);
+        console.log(
+            "Old Delegatee %s - Ubias: %s - uSlope: %s",
+            oldDelegatee,
+            lastPoint.bias.toUint256(),
+            lastPoint.slope.toUint256()
+        );
+        if (oldDelegatee != delegatee && oldDelegatee != 0)
+            _checkpointDelegatee(oldDelegatee, lastPoint.bias, lastPoint.slope, false);
         // Delegate to new delegator
-        _checkpointDelegatee(delegatee, uBias, uSlope, true);
+        _checkpointDelegatee(delegatee, lastPoint.bias, lastPoint.slope, true);
         _push(_delegatee[_delegator], SafeCast.toUint208(delegatee));
-        // checkpoint();
-        _globalCheckpoint(0, 0, 0, 0, 0);
     }
 
     /// @notice Update delegatee's `delegatedBalance` by `balance`.
@@ -373,26 +358,22 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     ///      `delegatedBalance` when a user's balance is modified (e.g. `increaseAmount`, `merge` etc).
     ///      If `delegatee` is 0 (i.e. user is not delegating), then do nothing.
     function _checkpointDelegatee(uint256 delegateeTokenId, int128 uNewBias, int128 uSlope, bool _increase) internal {
-        // if (delegateeTokenId == 0) return;
-        (, uint ts, uint lastBias) = _delegateCheckpointsBias[delegateeTokenId].latestCheckpoint();
-        (, , uint lastSlope) = _delegateCheckpointsSlope[delegateeTokenId].latestCheckpoint();
-        console.log("ts %s - lastBias: %s - lastSlope: %s", ts, lastBias, lastSlope);
+        (, uint ts, StructCheckpoints.Point memory lastPoint) = _delegateCheckpoints[delegateeTokenId]
+            .latestCheckpoint();
+        int128 lastSlope = lastPoint.slope;
+        int128 lastBias = lastPoint.bias;
 
-        // TODO: Need to round down this
-        uint256 baseBias = lastBias - (lastSlope * (block.timestamp - ts)) / PRECISSION.toUint256();
-        // console.log("ts %s - baseBias: %s - uNewBias: %s", _increase, baseBias, uNewBias);
-        int128 pushBias = baseBias.toInt128() + uNewBias;
-        int128 pushSlope = lastSlope.toInt128() + uSlope;
+        int128 baseBias = lastBias - (lastSlope * (block.timestamp - ts).toInt128()) / PRECISSION;
         if (!_increase) {
-            pushBias = uNewBias < baseBias.toInt128() ? baseBias.toInt128() - uNewBias : int128(0);
-            pushSlope = uSlope < lastSlope.toInt128() ? lastSlope.toInt128() - uSlope : int128(0);
+            lastPoint.bias = uNewBias < baseBias ? baseBias - uNewBias : int128(0);
+            lastPoint.slope = uSlope < lastSlope ? lastSlope - uSlope : int128(0);
+        } else {
+            lastPoint.bias = baseBias + uNewBias;
+            lastPoint.slope = lastSlope + uSlope;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
-        if (pushSlope == 0) pushBias = 0;
-        _push(_delegateCheckpointsBias[delegateeTokenId], SafeCast.toUint208(uint128(pushBias)));
-        _push(_delegateCheckpointsSlope[delegateeTokenId], SafeCast.toUint208(uint128(pushSlope)));
-
-        // _globalCheckpoint(delegateeTokenId, lastBias, lastSlope, pushBias, pushSlope);
+        if (lastPoint.slope == 0) lastPoint.bias = 0;
+        _pushStruct(_delegateCheckpoints[delegateeTokenId], lastPoint);
     }
 
     function _push(Checkpoints.Trace208 storage store, uint208 value) private returns (uint208, uint208) {
@@ -409,40 +390,45 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     /// @notice Calculate total voting power at some point in the past
     /// @param _timestamp Time to calculate the total voting power at
     /// @return Total voting power at that time
-    function supplyAt(uint256 _timestamp) external view returns (int128) {
+    function supplyAt(uint48 _timestamp) external view returns (int128) {
+        return _getAdjustedCheckpoint(_timestamp).bias;
+    }
+
+    /// @notice Calculate total voting power at some point in the past
+    /// @param _timestamp Time to calculate the total voting power at
+    /// @return Total voting power at that time
+    function _getAdjustedCheckpoint(uint48 _timestamp) internal view returns (StructCheckpoints.Point memory) {
         uint48 clockTime = SafeCast.toUint48(_timestamp);
         (bool exists, uint48 lastPoint, StructCheckpoints.Point memory lastGlobal) = _globalCheckpoints
             .upperLookupRecent(clockTime);
-        if (!exists) return 0;
-        int128 lastBias = lastGlobal.bias;
-        int128 slope = lastGlobal.slope;
-        console.log("Global Bias %s - Last Point: %s - Clock() %s", lastBias.toUint256(), lastPoint, _timestamp);
-        uint256 t_i = toGlobalClock(lastPoint);
-        while (true) {
-            // LMAO
-            // Iterates over a max of 255 weeks
-            t_i += 1 days;
+        if (!exists) return lastGlobal;
+        console.log("Global Bias %s - Last Point: %s - Clock() %s", lastGlobal.bias.toUint256(), lastPoint, _timestamp);
+        uint48 t_i = toGlobalClock(lastPoint);
+        while (t_i != _timestamp) {
+            // LMAO sure way to break everything
+            t_i += CLOCK_UNIT;
             int128 dSlope = 0;
             if (t_i > _timestamp) {
                 t_i = _timestamp;
             } else {
-                dSlope = _slopeChanges[t_i];
+                dSlope = _globalSlopeChanges[t_i];
             }
             if (dSlope != 0) {
-                console.log("Last slope %s - Last Bias: %s - Clock() %s", slope.toUint256(), lastBias.toUint256(), t_i);
-                lastBias -= ((slope * (t_i - lastPoint).toInt128()) / PRECISSION);
-                slope += dSlope;
+                console.log(
+                    "Last slope %s - Last Bias: %s - Clock() %s",
+                    lastGlobal.slope.toUint256(),
+                    lastGlobal.bias.toUint256(),
+                    t_i
+                );
+                lastGlobal.bias -= ((lastGlobal.slope * uint256(t_i - lastPoint).toInt128()) / PRECISSION);
+                lastGlobal.slope += dSlope;
                 lastPoint = uint48(t_i);
             }
-            if (t_i == _timestamp) {
-                break;
-            }
         }
-        console.log("Timestamp %s - Last Point: %s - Last check %s", clockTime, lastPoint, t_i);
-        int128 change = (slope * uint256(clockTime - lastPoint).toInt128()) / PRECISSION;
-        lastBias = lastBias < change ? int128(0) : lastBias - change;
+        int128 change = (lastGlobal.slope * uint256(clockTime - lastPoint).toInt128()) / PRECISSION;
+        lastGlobal.bias = lastGlobal.bias < change ? int128(0) : lastGlobal.bias - change;
 
-        return lastBias;
+        return lastGlobal;
     }
 
     /// @notice Get the current voting power for `_tokenId`
@@ -453,14 +439,12 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     /// @return User voting power
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
         uint48 clockTime = SafeCast.toUint48(_timestamp);
-        (bool exists, uint ts, uint lastBias) = _userCheckpointsBias[_tokenId].upperLookupRecent(clockTime);
-        // console.log("Clock Time %s - lastBiasUp: %s", clockTime);
+        (bool exists, uint ts, StructCheckpoints.Point memory lastPoint) = _userCheckpoints[_tokenId].upperLookupRecent(
+            clockTime
+        );
         if (!exists) return 0;
-        (, , uint lastSlope) = _userCheckpointsSlope[_tokenId].upperLookupRecent(clockTime);
-        console.log("Last Bias %s - Checkpoint: %s - Clock() %s", lastBias, ts, clock());
-        console.log("Last Slope %s - User Time: %s", lastSlope, _timestamp);
-        uint change = (((lastSlope * (clockTime - ts)) / PRECISSION.toUint256()));
-        lastBias = lastBias < change ? 0 : lastBias - change;
-        return lastBias;
+        int128 change = (((lastPoint.slope * (clockTime - ts).toInt128()) / PRECISSION));
+        lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
+        return lastPoint.bias.toUint256();
     }
 }

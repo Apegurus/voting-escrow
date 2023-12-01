@@ -17,8 +17,7 @@ import {EscrowVotes} from "./systems/EscrowVotes.sol";
 import "hardhat/console.sol";
 
 /**
- * @dev Extension of ERC721 to support voting and delegation as implemented by {Votes}, where each individual NFT counts
- * as 1 vote unit.
+ * @dev Extension of ERC721 to support voting and delegation as implemented by {Votes}
  *
  * Tokens do not count as votes until they are delegated, because votes must be tracked which incurs an additional cost
  * on every transfer. Token holders can either delegate to a trusted representative who will decide how to make use of
@@ -84,6 +83,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         // if (unlockTime > block.timestamp + MAXTIME) revert LockDurationTooLong();
 
         uint256 newTokenId = _tokenIdTracker;
+        /// TODO: Where do we normalize this
         uint256 unlockTime = toGlobalClock(block.timestamp + duration);
 
         console.log("End time s%", unlockTime);
@@ -109,6 +109,10 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
     ///
     function createLockFor(int128 _value, uint256 _lockDuration, address _to) external nonReentrant returns (uint256) {
         return _createLock(_value, _lockDuration, _to);
+    }
+
+    function globalCheckpoint() external nonReentrant {
+        return _globalCheckpoint(0, 0, 0, 0, 0);
     }
 
     /// @notice Deposit and lock tokens for a user
@@ -160,37 +164,12 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         IVotingEscrow.LockDetails memory _oldLocked,
         IVotingEscrow.LockDetails memory _newLocked
     ) internal {
-        int128 uOldBias;
-        int128 uOldSlope;
-        int128 uNewBias;
-        int128 uNewSlope;
-        // console.log("Running checkpoint %s from %s to %s okens", _tokenId, _newLocked.amount);
-
-        if (_tokenId != 0) {
-            // Calculate slopes and biases
-            // Kept at zero when they have to
-            if (_oldLocked.endTime > block.timestamp && _oldLocked.amount > 0) {
-                console.log("1 End Time %s -- Diff %s", _oldLocked.endTime, _oldLocked.endTime - block.timestamp);
-                uOldSlope = (_oldLocked.amount * PRECISSION) / MAXTIME;
-                uOldBias = (uOldSlope * (_oldLocked.endTime - block.timestamp).toInt128()) / PRECISSION;
-                // console.log("2 testBias %s -- testSlope %s", uOldSlope, uOldBias);
-            }
-            if (_newLocked.endTime > block.timestamp && _newLocked.amount > 0) {
-                console.log("2 End Time %s -- Diff %s", _newLocked.endTime, _newLocked.endTime - block.timestamp);
-                uNewSlope = (_newLocked.amount * PRECISSION) / MAXTIME;
-                uNewBias = (uNewSlope * (_newLocked.endTime - block.timestamp).toInt128()) / PRECISSION;
-                // console.log("2 testBias %s -- testSlope %s", uNewBias, uNewSlope);
-            }
-        }
-        _checkpoint(_tokenId, uOldBias, uOldSlope, uNewBias, uNewSlope, _oldLocked.endTime, _newLocked.endTime);
-        _delegate(_tokenId, _tokenId, uNewBias, uNewSlope);
+        _checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
+        _delegate(_tokenId, _tokenId);
     }
 
     function delegate(uint256 delegator, uint256 delegatee) external override {
-        int128 slope = (lockDetails[delegator].amount * PRECISSION) / MAXTIME;
-        int128 bias = ((slope * (lockDetails[delegator].endTime - block.timestamp).toInt128())) / PRECISSION;
-        _userCheckpoint(delegator, bias, slope);
-        _delegate(delegator, delegatee, bias, slope);
+        _delegate(delegator, delegatee);
     }
 
     /// @notice Get the current voting power for `_tokenId`
