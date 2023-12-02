@@ -2,29 +2,28 @@
 pragma solidity ^0.8.20;
 
 // TODO:
-import {IVotes} from "../interfaces/IVotes.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {StructCheckpoints} from "../libraries/StructCheckpoints.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
-import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
-import {BalanceLogicLibrary} from "../libraries/BalanceLogicLibrary.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IVotes} from "../interfaces/IVotes.sol";
 import "hardhat/console.sol";
 
-contract EscrowVotes is IVotes, ReentrancyGuard {
+contract CheckPointSystem is IVotes, ReentrancyGuard {
     using StructCheckpoints for StructCheckpoints.Trace;
     using Checkpoints for Checkpoints.Trace208;
     using SafeCastLibrary for int128;
     using SafeCastLibrary for uint256;
 
-    /*//////////////////////////////////////////////////////////////
-                             ESCROW STORAGE
-    //////////////////////////////////////////////////////////////*/
-
     int128 internal constant MAXTIME = 2 * 365 * 86400;
     int128 internal constant PRECISSION = 1e12;
     uint48 public constant CLOCK_UNIT = 1 days;
+
+    /*//////////////////////////////////////////////////////////////
+                             CHECKPOINT STORAGE
+    //////////////////////////////////////////////////////////////*/
 
     StructCheckpoints.Trace private _globalCheckpoints;
     mapping(uint256 => int128) public _globalSlopeChanges;
@@ -38,7 +37,7 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     uint256 public permanentLockBalance;
 
     /*//////////////////////////////////////////////////////////////
-                          /   ESCROW STORAGE
+                          /   CHECKPOINT STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /**
@@ -269,7 +268,9 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
         );
     }
 
-    function getVotes(uint256 tokenId) external view override returns (uint256) {}
+    function getVotes(uint256 tokenId) external view override returns (uint256) {
+        return _getAdjustedVotesCheckpoint(tokenId, SafeCast.toUint48(block.timestamp)).bias.toUint256();
+    }
 
     /// @notice Retrieves historical voting balance for a token id at a given timestamp.
     /// @dev If a checkpoint does not exist prior to the timestamp, this will return 0.
@@ -319,13 +320,12 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
         return lastPoint;
     }
 
-    function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {}
-
-    function delegate(uint256 delegator, uint256 delegatee) external virtual override {}
-
-    function delegates(uint256 tokenId) external view override returns (uint256) {
-        return _delegatee[tokenId].latest();
+    function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {
+        return _getAdjustedCheckpoint(SafeCast.toUint48(timepoint)).bias.toUint256();
     }
+
+    // TODO: In higher level contract
+    function delegate(uint256 delegator, uint256 delegatee) external virtual override {}
 
     function delegateBySig(
         uint256 delegator,
@@ -336,6 +336,10 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
         bytes32 r,
         bytes32 s
     ) external override {}
+
+    function delegates(uint256 tokenId) external view override returns (uint256) {
+        return _delegatee[tokenId].latest();
+    }
 
     /// @notice Record user delegation checkpoints. Used by voting system.
     /// @dev Skips delegation if already delegated to `delegatee`.

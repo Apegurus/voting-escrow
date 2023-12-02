@@ -13,7 +13,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 import {BalanceLogicLibrary} from "./libraries/BalanceLogicLibrary.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
-import {EscrowVotes} from "./systems/EscrowVotes.sol";
+import {CheckPointSystem} from "./systems/CheckPointSystem.sol";
 import "hardhat/console.sol";
 
 /**
@@ -23,12 +23,11 @@ import "hardhat/console.sol";
  * on every transfer. Token holders can either delegate to a trusted representative who will decide how to make use of
  * the votes in governance decisions, or they can delegate to themselves to be their own representative.
  */
-contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
+contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     using SafeERC20 for IERC20;
     using SafeCastLibrary for uint256;
     using SafeCastLibrary for int128;
     IERC20 public token;
-    // using SafeCastLibrary for uint256;
 
     // Total locked supply
     int128 public supply;
