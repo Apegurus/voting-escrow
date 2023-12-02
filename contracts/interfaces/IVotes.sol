@@ -53,5 +53,13 @@ interface IVotes is IERC6372 {
     /**
      * @dev Delegates votes from signer to `delegatee`.
      */
-    function delegateBySig(uint256 delegator, uint256 delegatee, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s) external;
+    function delegateBySig(
+        uint256 delegator,
+        uint256 delegatee,
+        uint256 nonce,
+        uint256 expiry,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
 }

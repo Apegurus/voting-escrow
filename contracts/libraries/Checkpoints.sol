@@ -54,10 +54,13 @@ library Checkpoints {
      * @dev Returns the value in the last (most recent) checkpoint with key lower or equal than the search key, or zero
      * if there is none.
      */
-    function upperLookup(Trace224 storage self, uint32 key) internal view returns (bool exists, uint96 _key, uint224 _value) {
+    function upperLookup(
+        Trace224 storage self,
+        uint32 key
+    ) internal view returns (bool exists, uint96 _key, uint224 _value) {
         uint256 len = self._checkpoints.length;
         uint256 pos = _upperBinaryLookup(self._checkpoints, key, 0, len);
-        
+
         exists = pos != 0;
         _value = exists ? _unsafeAccess(self._checkpoints, pos - 1)._value : 0;
         _key = exists ? _unsafeAccess(self._checkpoints, pos - 1)._key : 0;
@@ -70,7 +73,10 @@ library Checkpoints {
      * NOTE: This is a variant of {upperLookup} that is optimised to find "recent" checkpoint (checkpoints with high
      * keys).
      */
-    function upperLookupRecent(Trace224 storage self, uint32 key) internal view returns (bool exists, uint96 _key, uint224 _value) {
+    function upperLookupRecent(
+        Trace224 storage self,
+        uint32 key
+    ) internal view returns (bool exists, uint96 _key, uint224 _value) {
         uint256 len = self._checkpoints.length;
 
         uint256 low = 0;
@@ -86,7 +92,7 @@ library Checkpoints {
         }
 
         uint256 pos = _upperBinaryLookup(self._checkpoints, key, low, high);
-        
+
         exists = pos != 0;
         _value = exists ? _unsafeAccess(self._checkpoints, pos - 1)._value : 0;
         _key = exists ? _unsafeAccess(self._checkpoints, pos - 1)._key : 0;
@@ -253,7 +259,10 @@ library Checkpoints {
      * @dev Returns the value in the last (most recent) checkpoint with key lower or equal than the search key, or zero
      * if there is none.
      */
-    function upperLookup(Trace208 storage self, uint48 key) internal view returns (bool exists, uint96 _key, uint208 _value) {
+    function upperLookup(
+        Trace208 storage self,
+        uint48 key
+    ) internal view returns (bool exists, uint96 _key, uint208 _value) {
         uint256 len = self._checkpoints.length;
         uint256 pos = _upperBinaryLookup(self._checkpoints, key, 0, len);
 
@@ -269,7 +278,10 @@ library Checkpoints {
      * NOTE: This is a variant of {upperLookup} that is optimised to find "recent" checkpoint (checkpoints with high
      * keys).
      */
-    function upperLookupRecent(Trace208 storage self, uint48 key) internal view returns (bool exists, uint96 _key, uint208 _value) {
+    function upperLookupRecent(
+        Trace208 storage self,
+        uint48 key
+    ) internal view returns (bool exists, uint96 _key, uint208 _value) {
         uint256 len = self._checkpoints.length;
 
         uint256 low = 0;
@@ -452,7 +464,10 @@ library Checkpoints {
      * @dev Returns the value in the last (most recent) checkpoint with key lower or equal than the search key, or zero
      * if there is none.
      */
-    function upperLookup(Trace160 storage self, uint96 key) internal view returns(bool exists, uint96 _key, uint160 _value) {
+    function upperLookup(
+        Trace160 storage self,
+        uint96 key
+    ) internal view returns (bool exists, uint96 _key, uint160 _value) {
         uint256 len = self._checkpoints.length;
         uint256 pos = _upperBinaryLookup(self._checkpoints, key, 0, len);
 
@@ -468,7 +483,10 @@ library Checkpoints {
      * NOTE: This is a variant of {upperLookup} that is optimised to find "recent" checkpoint (checkpoints with high
      * keys).
      */
-    function upperLookupRecent(Trace160 storage self, uint96 key) internal view returns (bool exists, uint96 _key, uint160 _value) {
+    function upperLookupRecent(
+        Trace160 storage self,
+        uint96 key
+    ) internal view returns (bool exists, uint96 _key, uint160 _value) {
         uint256 len = self._checkpoints.length;
 
         uint256 low = 0;

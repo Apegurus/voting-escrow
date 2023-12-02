@@ -11,7 +11,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ERC5725} from "./erc5725/ERC5725.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
-import {BalanceLogicLibrary} from "./libraries/BalanceLogicLibrary.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
 import {CheckPointSystem} from "./systems/CheckPointSystem.sol";
 import "hardhat/console.sol";
@@ -177,8 +176,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     /// @return balance ser voting power
     function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
         if (lockDetails[_tokenId].endTime < _timestamp) return 0;
-        int128 slope = (lockDetails[_tokenId].amount * PRECISSION) / MAXTIME;
-        balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / PRECISSION;
+        int128 slope = (lockDetails[_tokenId].amount * _PRECISSION) / _MAXTIME;
+        balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / _PRECISSION;
     }
 
     function _increaseAmountFor(uint256 _tokenId, uint256 _value) internal {
