@@ -155,20 +155,13 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
 
             _userCheckpoint(_tokenId, uNewBias, uNewSlope);
 
-            // (, uint DelegateTs, uint delegateeTokenId) = _delegatee[_tokenId].latestCheckpoint();
+            (, uint delegateTs, uint delegateeTokenId) = _delegatee[_tokenId].latestCheckpoint();
 
-            // if (DelegateTs != 0) {
-            //     (, uint ts, uint lastBias) = _delegateCheckpointsBias[delegateeTokenId].latestCheckpoint();
-
-            //     (, , uint lastSlope) = _delegateCheckpointsSlope[delegateeTokenId].latestCheckpoint();
-            //     uint256 preBias = DelegateTs <= lastUserCheckPoint ? lastBias - lastUserBias : lastBias;
-            //     uint256 preSlope = DelegateTs <= lastUserCheckPoint ? lastSlope - lastUserSlope : lastSlope;
-
-            //     uint256 baseBias = preBias - (preSlope * (ts - block.timestamp)) / PRECISSION;
-
-            //     _push(_delegateCheckpointsBias[delegateeTokenId], SafeCast.toUint208(baseBias + uNewBias));
-            //     _push(_delegateCheckpointsSlope[delegateeTokenId], SafeCast.toUint208(preSlope + uNewSlope));
-            // }
+            if (delegateTs != 0) {
+                /// @notice this can likely be handled more efficienttly
+                _checkpointDelegatee(delegateeTokenId, uOldBias, uOldSlope, uOldEndTime, false);
+                _checkpointDelegatee(delegateeTokenId, uNewBias, uNewSlope, uNewEndTime, true);
+            }
         }
 
         _globalCheckpoint(_tokenId, uOldBias, uOldSlope, uNewBias, uNewSlope);
@@ -231,9 +224,12 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
                 lastGlobal.bias.toUint256(),
                 lastGlobal.slope.toUint256()
             );
+            lastGlobal.bias =
+                lastGlobal.bias -
+                ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()) / PRECISSION);
 
             int128 preBias = lastGlobal.bias - uOldBias;
-            int128 preSlope = lastGlobal.slope - uOldSlope;
+            int128 preSlope = lastGlobal.slope;
 
             console.log(
                 "Running globalUpdate %s - preBias: %s - preSlope: %s",
@@ -241,17 +237,16 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
                 preBias.toUint256(),
                 preSlope.toUint256()
             );
-            int128 baseBias = preBias - ((preSlope * (block.timestamp - lastCheckpoint).toInt128()) / PRECISSION);
 
             console.log(
                 "Running newSlope %s - baseBias: %s - newBias: %s",
                 uNewSlope.toUint256(),
-                baseBias.toUint256(),
+                preBias.toUint256(),
                 uNewBias.toUint256()
             );
 
-            lastGlobal.slope = preSlope + uNewSlope;
-            lastGlobal.bias = baseBias + uNewBias;
+            lastGlobal.slope += uNewSlope - uOldSlope;
+            lastGlobal.bias += uNewBias - uOldBias;
         } else {
             uint t_i = block.timestamp; // Initial value of t_i is always larger than the ts of the last point
             lastGlobal.bias -= (lastGlobal.slope * (t_i - lastCheckpoint).toInt128()) / PRECISSION;

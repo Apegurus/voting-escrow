@@ -639,5 +639,85 @@ describe('VotingEscrow', function () {
       expect(supplyAt).to.equal(vote)
       expect(isWithinLimit(power, vote, 1)).to.be.true
     })
+
+    it('Should have adecuately calculate voting power after increasing ammount for one lock over time', async function () {
+      const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      let lockDetails = await votingEscrow.lockDetails(1)
+
+      let latestTime = await time.latest()
+      let supplyAt = await votingEscrow.supplyAt(latestTime)
+      let vote = await connectedEscrow.getPastVotes(1, latestTime)
+      console.log('-- Supply after first lock --', supplyAt)
+
+      let slope = lockDetails.amount.mul(1e12).div(MAX_TIME)
+      let power = slope.mul(lockDetails.endTime.sub(latestTime)).div(1e12)
+
+      console.log(`-- Supply after first lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
+      expect(supplyAt).to.equal(vote)
+      expect(power).to.equal(vote)
+      expect(lockDetails.amount).to.equal(lockedAmount)
+
+      await connectedEscrow.increaseAmount(1, lockedAmount)
+      await time.increaseTo(latestTime + 7884000)
+      latestTime = await time.latest()
+      lockDetails = await votingEscrow.lockDetails(1)
+      expect(lockDetails.amount).to.equal(lockedAmount * 2)
+
+      slope = lockDetails.amount.mul(1e12).div(MAX_TIME)
+      power = slope.mul(lockDetails.endTime.sub(latestTime)).div(1e12)
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      vote = await connectedEscrow.getPastVotes(1, latestTime)
+      let balance = await connectedEscrow.balanceOfNFTAt(1, latestTime)
+      console.log(
+        `-- Supply after second lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} ---- Balance ${balance} --'`
+      )
+      // expect(supplyAt).to.equal(vote)
+      expect(isWithinLimit(power, vote, 1)).to.be.true
+      expect(isWithinLimit(supplyAt, vote, 1)).to.be.true
+
+      await time.increaseTo(latestTime + 3942000)
+      latestTime = await time.latest()
+
+      slope = lockDetails.amount.mul(1e12).div(MAX_TIME)
+      power = slope.mul(lockDetails.endTime.sub(latestTime)).div(1e12)
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      vote = await connectedEscrow.getPastVotes(1, latestTime)
+      console.log(`-- Supply after third lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
+      // expect(supplyAt).to.equal(vote)
+      expect(isWithinLimit(power, vote, 1)).to.be.true
+      expect(isWithinLimit(supplyAt, vote, 1)).to.be.true
+
+      await time.increaseTo(latestTime + 3942000)
+      await connectedEscrow.increaseAmount(1, lockedAmount)
+      lockDetails = await votingEscrow.lockDetails(1)
+      latestTime = await time.latest()
+
+      slope = lockDetails.amount.mul(1e12).div(MAX_TIME)
+      power = slope.mul(lockDetails.endTime.sub(latestTime)).div(1e12)
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      vote = await connectedEscrow.getPastVotes(1, latestTime)
+      console.log(`-- Supply after 4 lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
+      expect(isWithinLimit(power, vote, 1)).to.be.true
+      expect(isWithinLimit(supplyAt, vote, 1)).to.be.true
+
+      await time.increaseTo(latestTime + 15768000)
+      latestTime = await time.latest()
+
+      slope = lockDetails.amount.mul(1e12).div(MAX_TIME)
+      power = slope.mul(lockDetails.endTime.sub(latestTime)).div(1e12)
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      vote = await connectedEscrow.getPastVotes(1, latestTime)
+      console.log(`-- Supply after 5 lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
+      expect(isWithinLimit(power, vote, 1)).to.be.true
+      expect(isWithinLimit(supplyAt, vote, 1)).to.be.true
+    })
   })
 })

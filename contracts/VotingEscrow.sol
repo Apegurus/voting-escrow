@@ -88,15 +88,10 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
 
         console.log("End time s%", unlockTime);
 
-        // lockDetails[newTokenId] = LockDetails({
-        //     amount: value,
-        //     startTime: uint128(block.timestamp),
-        //     endTime: uint128(block.timestamp) + duration
-        // });
-
         _tokenIdTracker++;
         _mint(to, newTokenId);
         _depositFor(newTokenId, value, unlockTime, lockDetails[newTokenId]);
+        _delegate(newTokenId, newTokenId, unlockTime);
         // IERC20(payoutToken(newTokenId)).safeTransferFrom(msg.sender, address(this), value);
         return newTokenId;
     }
@@ -169,7 +164,6 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         IVotingEscrow.LockDetails memory _newLocked
     ) internal {
         _checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
-        _delegate(_tokenId, _tokenId, _newLocked.endTime);
     }
 
     function delegate(uint256 delegator, uint256 delegatee) external override {
@@ -186,6 +180,26 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         if (lockDetails[_tokenId].endTime < _timestamp) return 0;
         int128 slope = (lockDetails[_tokenId].amount * PRECISSION) / MAXTIME;
         balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / PRECISSION;
+    }
+
+    function _increaseAmountFor(uint256 _tokenId, uint256 _value) internal {
+        IVotingEscrow.LockDetails memory oldLocked = lockDetails[_tokenId];
+
+        // if (_value == 0) revert ZeroAmount();
+        // if (oldLocked.amount <= 0) revert NoLockFound();
+        // if (oldLocked.end <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
+
+        // if (oldLocked.isPermanent) permanentLockBalance += _value;
+        // _checkpointDelegatee(_delegates[_tokenId], _value, true);
+        _depositFor(_tokenId, _value.toInt128(), 0, oldLocked);
+        // _checkpointDelegatee(_tokenId, oldLocked.endTime);
+
+        // emit MetadataUpdate(_tokenId);
+    }
+
+    function increaseAmount(uint256 _tokenId, uint256 _value) external nonReentrant {
+        // if (!_isApprovedOrOwner(_msgSender(), _tokenId)) revert NotApprovedOrOwner();
+        _increaseAmountFor(_tokenId, _value);
     }
 
     /*///////////////////////////////////////////////////////////////
