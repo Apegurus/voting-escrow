@@ -283,13 +283,45 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     /// @param _timestamp .
     /// @return votes Total voting balance including delegations at a given timestamp.
     function getPastVotes(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
-        uint48 clockTime = SafeCast.toUint48(_timestamp);
+        return _getAdjustedVotesCheckpoint(_tokenId, SafeCast.toUint48(_timestamp)).bias.toUint256();
+    }
+
+    /// @notice Calculate total voting power at some point in the past
+    /// @param _timestamp Time to calculate the total voting power at
+    /// @return Total voting power at that time
+    function _getAdjustedVotesCheckpoint(
+        uint256 _tokenId,
+        uint48 _timestamp
+    ) internal view returns (StructCheckpoints.Point memory) {
         (bool exists, uint ts, StructCheckpoints.Point memory lastPoint) = _delegateCheckpoints[_tokenId]
-            .upperLookupRecent(clockTime);
-        if (!exists) return 0;
-        int128 change = (((lastPoint.slope * (_timestamp - ts).toInt128()) / PRECISSION));
-        int128 votes = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
-        return votes.toUint256();
+            .upperLookupRecent(_timestamp);
+        if (!exists) return lastPoint;
+        uint48 t_i = toGlobalClock(ts);
+        while (t_i != _timestamp) {
+            // LMAO sure way to break everything
+            t_i += CLOCK_UNIT;
+            int128 dSlope = 0;
+            if (t_i > _timestamp) {
+                t_i = _timestamp;
+            } else {
+                dSlope = _delegateeSlopeChanges[_tokenId][t_i];
+            }
+            if (dSlope != 0) {
+                console.log(
+                    "Last slope %s - Last Bias: %s - Clock() %s",
+                    lastPoint.slope.toUint256(),
+                    lastPoint.bias.toUint256(),
+                    t_i
+                );
+                lastPoint.bias -= ((lastPoint.slope * uint256(t_i - ts).toInt128()) / PRECISSION);
+                lastPoint.slope += dSlope;
+                ts = uint48(t_i);
+            }
+        }
+        int128 change = (lastPoint.slope * uint256(_timestamp - ts).toInt128()) / PRECISSION;
+        lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
+
+        return lastPoint;
     }
 
     function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {}
@@ -312,11 +344,11 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
 
     /// @notice Record user delegation checkpoints. Used by voting system.
     /// @dev Skips delegation if already delegated to `delegatee`.
-    function _delegate(uint256 _delegator, uint256 delegatee) internal {
+    function _delegate(uint256 _delegator, uint256 delegatee, uint256 endTime) internal {
         uint256 currentDelegate = _delegatee[_delegator].latest();
         if (currentDelegate == delegatee) return;
 
-        _checkpointDelegator(_delegator, delegatee);
+        _checkpointDelegator(_delegator, delegatee, endTime);
 
         // emit DelegateChanged(_msgSender(), currentDelegate, delegatee);
     }
@@ -328,7 +360,7 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     ///      If you wish to dedelegate only, use `_delegate(tokenId, 0)` instead.
     /// @param _delegator The delegator to update checkpoints for
     /// @param delegatee The new delegatee for the delegator. Cannot be equal to `_delegator` (use 0 instead).
-    function _checkpointDelegator(uint256 _delegator, uint256 delegatee) internal {
+    function _checkpointDelegator(uint256 _delegator, uint256 delegatee, uint256 endTime) internal {
         (, uint ts, StructCheckpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
         lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISSION);
         if (lastPoint.bias < 0) {
@@ -344,9 +376,9 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
             lastPoint.slope.toUint256()
         );
         if (oldDelegatee != delegatee && oldDelegatee != 0)
-            _checkpointDelegatee(oldDelegatee, lastPoint.bias, lastPoint.slope, false);
+            _checkpointDelegatee(oldDelegatee, lastPoint.bias, lastPoint.slope, endTime, false);
         // Delegate to new delegator
-        _checkpointDelegatee(delegatee, lastPoint.bias, lastPoint.slope, true);
+        _checkpointDelegatee(delegatee, lastPoint.bias, lastPoint.slope, endTime, true);
         _push(_delegatee[_delegator], SafeCast.toUint208(delegatee));
     }
 
@@ -357,23 +389,67 @@ contract EscrowVotes is IVotes, ReentrancyGuard {
     ///      If used with `balance` < `_locked[_tokenId].amount`, then this is used to adjust
     ///      `delegatedBalance` when a user's balance is modified (e.g. `increaseAmount`, `merge` etc).
     ///      If `delegatee` is 0 (i.e. user is not delegating), then do nothing.
-    function _checkpointDelegatee(uint256 delegateeTokenId, int128 uNewBias, int128 uSlope, bool _increase) internal {
-        (, uint ts, StructCheckpoints.Point memory lastPoint) = _delegateCheckpoints[delegateeTokenId]
-            .latestCheckpoint();
-        int128 lastSlope = lastPoint.slope;
-        int128 lastBias = lastPoint.bias;
+    function _checkpointDelegatee(
+        uint256 delegateeTokenId,
+        int128 uNewBias,
+        int128 uSlope,
+        uint256 endTime,
+        bool _increase
+    ) internal {
+        (StructCheckpoints.Point memory lastPoint, uint48 lastCheckpoint) = _baseCheckpointDelegatee(delegateeTokenId);
 
-        int128 baseBias = lastBias - (lastSlope * (block.timestamp - ts).toInt128()) / PRECISSION;
+        int128 baseBias = lastPoint.bias -
+            (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128()) /
+            PRECISSION;
+
         if (!_increase) {
+            _delegateeSlopeChanges[delegateeTokenId][endTime] += uSlope;
             lastPoint.bias = uNewBias < baseBias ? baseBias - uNewBias : int128(0);
-            lastPoint.slope = uSlope < lastSlope ? lastSlope - uSlope : int128(0);
+            lastPoint.slope = uSlope < lastPoint.slope ? lastPoint.slope - uSlope : int128(0);
         } else {
+            _delegateeSlopeChanges[delegateeTokenId][endTime] -= uSlope;
             lastPoint.bias = baseBias + uNewBias;
-            lastPoint.slope = lastSlope + uSlope;
+            lastPoint.slope = lastPoint.slope + uSlope;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
         if (lastPoint.slope == 0) lastPoint.bias = 0;
         _pushStruct(_delegateCheckpoints[delegateeTokenId], lastPoint);
+    }
+
+    function _baseCheckpointDelegatee(
+        uint256 delegateeTokenId
+    ) internal returns (StructCheckpoints.Point memory lastPoint, uint48 lastCheckpoint) {
+        (bool exists, uint48 ts, StructCheckpoints.Point memory point) = _delegateCheckpoints[delegateeTokenId]
+            .latestCheckpoint();
+        lastPoint = point;
+        lastCheckpoint = ts;
+        if (exists) {
+            // Go over weeks to fill history and calculate what the current point is
+            uint48 t_i = toGlobalClock(lastCheckpoint);
+
+            while (t_i != block.timestamp) {
+                // LMAO Premium solidity dev over here
+                t_i += CLOCK_UNIT;
+                int128 dSlope = 0;
+                if (t_i > block.timestamp) {
+                    t_i = uint48(block.timestamp);
+                } else {
+                    dSlope = _delegateeSlopeChanges[delegateeTokenId][t_i];
+                }
+                if (dSlope != 0) {
+                    console.log(
+                        "Last slope %s - Last Bias: %s - Clock() %s",
+                        lastPoint.slope.toUint256(),
+                        lastPoint.bias.toUint256(),
+                        t_i
+                    );
+                    lastPoint.bias -= ((lastPoint.slope * uint256(t_i - lastCheckpoint).toInt128()) / PRECISSION);
+                    lastPoint.slope += dSlope;
+                    lastCheckpoint = uint48(t_i);
+                    _delegateCheckpoints[delegateeTokenId].push(lastCheckpoint, lastPoint);
+                }
+            }
+        }
     }
 
     function _push(Checkpoints.Trace208 storage store, uint208 value) private returns (uint208, uint208) {

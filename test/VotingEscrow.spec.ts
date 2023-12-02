@@ -353,6 +353,223 @@ describe('VotingEscrow', function () {
       expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
     })
 
+    it('Should have adecuate delegated balances over time', async function () {
+      const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const connectedToken = mockToken.connect(alice)
+
+      let bias = []
+      let vote = []
+
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      const lockDetails = await votingEscrow.lockDetails(1)
+      let latestTime = await time.latest()
+      let supplyAt = await votingEscrow.supplyAt(await latestTime)
+      vote[0] = await connectedEscrow.getPastVotes(1, latestTime)
+      console.log('-- Supply after first lock --', supplyAt)
+      expect(supplyAt).to.equal(vote[0])
+      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+      latestTime = await time.latest()
+      supplyAt = await votingEscrow.supplyAt(await latestTime)
+      bias[1] = await connectedEscrow.balanceOfNFTAt(1, latestTime)
+      console.log('-- Supply after second lock --', supplyAt)
+      await connectedEscrow.createLockFor(lockedAmount, duration / 2, alice.address)
+      latestTime = await time.latest()
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      bias[2] = await connectedEscrow.balanceOfNFTAt(1, latestTime)
+      console.log('-- Supply after third lock --', supplyAt)
+
+      const ownerOf = await votingEscrow.ownerOf(1)
+      expect(ownerOf).to.equal(alice.address)
+      expect(lockDetails.amount).to.equal(lockedAmount)
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      await connectedEscrow.delegate(1, 2)
+      await connectedEscrow.delegate(3, 1)
+      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+      await connectedEscrow.globalCheckpoint()
+      latestTime = await time.latest()
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`Voting power at after checkpoint ${latestTime} after delegation`, vote[0], vote[1], vote[2])
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]), 1)).to.be.true
+
+      await time.increaseTo(latestTime + 7884000)
+      latestTime = await time.latest()
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
+      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+
+      await connectedEscrow.globalCheckpoint()
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`Voting power at after checkpoint ${latestTime}`, vote[0], vote[1], vote[2])
+      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+
+      await time.increaseTo(latestTime + 3942000)
+      latestTime = await time.latest()
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+
+      await connectedEscrow.globalCheckpoint()
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`Voting power at after checkpoint ${latestTime}`, vote[0], vote[1], vote[2])
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+
+      await time.increaseTo(latestTime + 3942000)
+      latestTime = await time.latest()
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+
+      // await connectedEscrow.globalCheckpoint()
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`Voting power at after checkpoint ${latestTime}`, vote[0], vote[1], vote[2])
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+
+      await time.increaseTo(latestTime + 3942000)
+      latestTime = await time.latest()
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+
+      await time.increaseTo(latestTime + 15768000)
+      latestTime = await time.latest()
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+
+      await connectedEscrow.delegate(1, 1)
+
+      latestTime = await time.latest()
+
+      bias = await Promise.all([
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+        connectedEscrow.balanceOfNFTAt(2, latestTime),
+        connectedEscrow.balanceOfNFTAt(3, latestTime),
+      ])
+      console.log(`Balance of NFT at ${latestTime}`, bias[0], bias[1], bias[2])
+
+      vote = await Promise.all([
+        connectedEscrow.getPastVotes(1, latestTime),
+        connectedEscrow.getPastVotes(2, latestTime),
+        connectedEscrow.getPastVotes(3, latestTime),
+      ])
+      console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
+
+      supplyAt = await votingEscrow.supplyAt(latestTime)
+      console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+    })
+
     it('Should have adecuately calculate voting power for one lock over time', async function () {
       const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
 

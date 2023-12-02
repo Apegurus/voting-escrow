@@ -115,6 +115,10 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         return _globalCheckpoint(0, 0, 0, 0, 0);
     }
 
+    function checkpointDelegatee(uint256 _tokenId) external nonReentrant {
+        _baseCheckpointDelegatee(_tokenId);
+    }
+
     /// @notice Deposit and lock tokens for a user
     /// @param _tokenId NFT that holds lock
     /// @param _value Amount to deposit
@@ -165,11 +169,11 @@ contract VotingEscrow is ERC5725, IVotingEscrow, EscrowVotes, EIP712 {
         IVotingEscrow.LockDetails memory _newLocked
     ) internal {
         _checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
-        _delegate(_tokenId, _tokenId);
+        _delegate(_tokenId, _tokenId, _newLocked.endTime);
     }
 
     function delegate(uint256 delegator, uint256 delegatee) external override {
-        _delegate(delegator, delegatee);
+        _delegate(delegator, delegatee, lockDetails[delegator].endTime);
     }
 
     /// @notice Get the current voting power for `_tokenId`
