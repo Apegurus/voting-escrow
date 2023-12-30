@@ -1,12 +1,8 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
+import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 
-import {IERC721, IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
-import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
-import {IERC4906} from "@openzeppelin/contracts/interfaces/IERC4906.sol";
-import {IVotes} from "./IVotes.sol";
-
-interface IVotingEscrow {
+interface IVotingEscrow is IERC5805 {
     struct LockDetails {
         int128 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started

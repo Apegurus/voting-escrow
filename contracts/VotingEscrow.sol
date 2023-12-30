@@ -3,7 +3,9 @@
 
 pragma solidity ^0.8.20;
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Votes} from "@openzeppelin/contracts/governance/utils/Votes.sol";
@@ -229,6 +231,62 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     // function totalSupplyAt(uint256 _timestamp) external view returns (uint256) {
     //     return _supplyAt(_timestamp);
     // }
+
+    /*///////////////////////////////////////////////////////////////
+                           @dev See {IERC5805}.
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Clock used for flagging checkpoints.
+     */
+    function clock() public view override(CheckPointSystem, IERC6372) returns (uint48) {
+        return super.clock();
+    }
+
+    /**
+     * @dev Machine-readable description of the clock as specified in EIP-6372.
+     */
+    // solhint-disable-next-line func-name-mixedcase
+    function CLOCK_MODE() public view override(CheckPointSystem, IERC6372) returns (string memory) {
+        return super.CLOCK_MODE();
+    }
+
+    function getVotes(address deelegateeAddress) external view returns (uint256) {
+        return _getAdjustedVotesCheckpoint(deelegateeAddress, SafeCast.toUint48(block.timestamp)).bias.toUint256();
+    }
+
+    /// @notice Retrieves historical voting balance for a token id at a given timestamp.
+    /// @dev If a checkpoint does not exist prior to the timestamp, this will return 0.
+    ///      The user must also own the token at the time in order to receive a voting balance.
+    /// @param _deelegateeAddress .
+    /// @param _timestamp .
+    /// @return votes Total voting balance including delegations at a given timestamp.
+    function getPastVotes(address _deelegateeAddress, uint256 _timestamp) external view returns (uint256) {
+        return _getAdjustedVotesCheckpoint(_deelegateeAddress, SafeCast.toUint48(_timestamp)).bias.toUint256();
+    }
+
+    function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {
+        return _getAdjustedCheckpoint(SafeCast.toUint48(timepoint)).bias.toUint256();
+    }
+
+    function delegate(address account) external override {
+        uint balance = balanceOf(account);
+        for (uint i = 0; i < balance; i++) {
+            uint tokenId = tokenByIndex(i);
+            _delegate(tokenId, account, lockDetails[tokenId].endTime);
+        }
+    }
+
+    function delegates(address delegatee) external view override returns (address) {}
+
+    function delegateBySig(
+        address delegatee,
+        uint256 nonce,
+        uint256 expiry,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external override {}
 
     /*///////////////////////////////////////////////////////////////
                            @dev See {IERC5725}.

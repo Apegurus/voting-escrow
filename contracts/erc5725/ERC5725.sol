@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.23;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 /// @dev Official ERC-5725 interface
 import "@erc-5725/interfaces/IERC5725.sol";
 
-abstract contract ERC5725 is IERC5725, ERC721 {
+abstract contract ERC5725 is IERC5725, ERC721Enumerable {
     using SafeERC20 for IERC20;
 
     /// @dev mapping for claimed payouts
@@ -128,7 +128,7 @@ abstract contract ERC5725 is IERC5725, ERC721 {
      */
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override(ERC721, IERC165) returns (bool supported) {
+    ) public view virtual override(ERC721Enumerable, IERC165) returns (bool supported) {
         return interfaceId == type(IERC5725).interfaceId || super.supportsInterface(interfaceId);
     }
 

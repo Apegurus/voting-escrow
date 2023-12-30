@@ -6,10 +6,9 @@ import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
-import {IVotesEscrow} from "../interfaces/IVotesEscrow.sol";
 import "hardhat/console.sol";
 
-contract CheckPointSystem is IVotesEscrow, ReentrancyGuard {
+contract CheckPointSystem is ReentrancyGuard {
     using Checkpoints for Checkpoints.Trace;
     using Checkpoints for Checkpoints.TraceAddress;
     using SafeCastLibrary for int128;
@@ -266,20 +265,6 @@ contract CheckPointSystem is IVotesEscrow, ReentrancyGuard {
         );
     }
 
-    function getVotes(address deelegateeAddress) external view returns (uint256) {
-        return _getAdjustedVotesCheckpoint(deelegateeAddress, SafeCast.toUint48(block.timestamp)).bias.toUint256();
-    }
-
-    /// @notice Retrieves historical voting balance for a token id at a given timestamp.
-    /// @dev If a checkpoint does not exist prior to the timestamp, this will return 0.
-    ///      The user must also own the token at the time in order to receive a voting balance.
-    /// @param _deelegateeAddress .
-    /// @param _timestamp .
-    /// @return votes Total voting balance including delegations at a given timestamp.
-    function getPastVotes(address _deelegateeAddress, uint256 _timestamp) external view returns (uint256) {
-        return _getAdjustedVotesCheckpoint(_deelegateeAddress, SafeCast.toUint48(_timestamp)).bias.toUint256();
-    }
-
     /// @notice Calculate total voting power at some point in the past
     /// @param _timestamp Time to calculate the total voting power at
     /// @return Total voting power at that time
@@ -316,10 +301,6 @@ contract CheckPointSystem is IVotesEscrow, ReentrancyGuard {
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
 
         return lastPoint;
-    }
-
-    function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {
-        return _getAdjustedCheckpoint(SafeCast.toUint48(timepoint)).bias.toUint256();
     }
 
     function delegateBySig(
@@ -518,17 +499,4 @@ contract CheckPointSystem is IVotesEscrow, ReentrancyGuard {
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
         return lastPoint.bias.toUint256();
     }
-
-    function delegates(address account) external view override returns (address) {}
-
-    function delegate(address delegatee) external override {}
-
-    function delegateBySig(
-        address delegatee,
-        uint256 nonce,
-        uint256 expiry,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external override {}
 }
