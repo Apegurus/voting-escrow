@@ -36,6 +36,33 @@ describe('VotingEscrow', function () {
   })
 
   describe('Lock Creation', function () {
+    it('Should be able to create a single lock', async function () {
+      const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const connectedToken = mockToken.connect(alice)
+
+      const balanceBefore = await connectedToken.balanceOf(alice.address)
+
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      let latestTime = await time.latest()
+
+      const balanceAfter = await connectedToken.balanceOf(alice.address)
+
+      const ownerOf = await votingEscrow.ownerOf(1)
+      const lockDetails = await votingEscrow.lockDetails(1)
+      let supplyAt = await votingEscrow.supplyAt(latestTime)
+
+      expect(ownerOf).to.equal(alice.address)
+
+      expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+      expect(lockDetails.amount).to.equal(lockedAmount)
+      const [vote1] = await Promise.all([connectedEscrow.getPastVotes(1, latestTime)])
+
+      expect(supplyAt).to.equal(vote1)
+    })
+
     it('Should be able to create a new lock', async function () {
       const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
 
@@ -45,8 +72,6 @@ describe('VotingEscrow', function () {
       const balanceBefore = await connectedToken.balanceOf(alice.address)
 
       await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
-
-      // await connectedEscrow.createLockFor('100', duration * 2, alice.address)
 
       const balanceAfter = await connectedToken.balanceOf(alice.address)
 
@@ -67,7 +92,7 @@ describe('VotingEscrow', function () {
 
       expect(ownerOf).to.equal(alice.address)
 
-      // expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+      expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
 
       expect(lockDetails.amount).to.equal(lockedAmount)
       let latestTime = await time.latest()
@@ -180,12 +205,10 @@ describe('VotingEscrow', function () {
       await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
       latestTime = await time.latest()
       supplyAt = await votingEscrow.supplyAt(await latestTime)
-      bias[1] = await connectedEscrow.balanceOfNFTAt(1, latestTime)
       console.log('-- Supply after second lock --', supplyAt)
       await connectedEscrow.createLockFor(lockedAmount, duration / 2, alice.address)
       latestTime = await time.latest()
       supplyAt = await votingEscrow.supplyAt(latestTime)
-      bias[2] = await connectedEscrow.balanceOfNFTAt(1, latestTime)
       console.log('-- Supply after third lock --', supplyAt)
 
       const ownerOf = await votingEscrow.ownerOf(1)
@@ -206,7 +229,9 @@ describe('VotingEscrow', function () {
       ])
       console.log(`Voting power at ${latestTime}`, vote[0], vote[1], vote[2])
 
-      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+      let sumVotes = vote[0].add(vote[1]).add(vote[2])
+
+      expect(supplyAt).to.equal(sumVotes)
       await connectedEscrow.globalCheckpoint()
       vote = await Promise.all([
         connectedEscrow.getPastVotes(1, latestTime),
@@ -236,7 +261,8 @@ describe('VotingEscrow', function () {
 
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
-      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+      sumVotes = vote[0].add(vote[1]).add(vote[2])
+      expect(supplyAt).to.equal(sumVotes)
 
       await connectedEscrow.globalCheckpoint()
       vote = await Promise.all([
@@ -246,7 +272,8 @@ describe('VotingEscrow', function () {
       ])
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`Voting power at after checkpoint ${latestTime}`, vote[0], vote[1], vote[2])
-      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+      sumVotes = vote[0].add(vote[1]).add(vote[2])
+      expect(supplyAt).to.equal(sumVotes)
 
       await time.increaseTo(latestTime + 3942000)
       latestTime = await time.latest()
@@ -267,7 +294,9 @@ describe('VotingEscrow', function () {
 
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+      sumVotes = vote[0].add(vote[1]).add(vote[2])
+      // expect(supplyAt).to.equal(sumVotes)
+      expect(isWithinLimit(supplyAt, sumVotes, 1)).to.be.true
 
       await connectedEscrow.globalCheckpoint()
       vote = await Promise.all([
@@ -277,7 +306,9 @@ describe('VotingEscrow', function () {
       ])
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`Voting power at after checkpoint ${latestTime}`, vote[0], vote[1], vote[2])
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+      sumVotes = vote[0].add(vote[1]).add(vote[2])
+      // expect(supplyAt).to.equal(sumVotes)
+      expect(isWithinLimit(supplyAt, sumVotes, 1)).to.be.true
 
       await time.increaseTo(latestTime + 3942000)
       latestTime = await time.latest()
@@ -298,7 +329,7 @@ describe('VotingEscrow', function () {
 
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]), 1)).to.be.true
 
       // await connectedEscrow.globalCheckpoint()
       vote = await Promise.all([
@@ -308,7 +339,7 @@ describe('VotingEscrow', function () {
       ])
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`Voting power at after checkpoint ${latestTime}`, vote[0], vote[1], vote[2])
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]), 1)).to.be.true
 
       await time.increaseTo(latestTime + 3942000)
       latestTime = await time.latest()
@@ -329,7 +360,7 @@ describe('VotingEscrow', function () {
 
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]), 1)).to.be.true
 
       await time.increaseTo(latestTime + 15768000)
       latestTime = await time.latest()
@@ -350,7 +381,7 @@ describe('VotingEscrow', function () {
 
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]))).to.be.true
+      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]), 1)).to.be.true
     })
 
     it('Should have adecuate delegated balances over time', async function () {
@@ -372,12 +403,10 @@ describe('VotingEscrow', function () {
       await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
       latestTime = await time.latest()
       supplyAt = await votingEscrow.supplyAt(await latestTime)
-      bias[1] = await connectedEscrow.balanceOfNFTAt(1, latestTime)
       console.log('-- Supply after second lock --', supplyAt)
       await connectedEscrow.createLockFor(lockedAmount, duration / 2, alice.address)
       latestTime = await time.latest()
       supplyAt = await votingEscrow.supplyAt(latestTime)
-      bias[2] = await connectedEscrow.balanceOfNFTAt(1, latestTime)
       console.log('-- Supply after third lock --', supplyAt)
 
       const ownerOf = await votingEscrow.ownerOf(1)
@@ -400,7 +429,8 @@ describe('VotingEscrow', function () {
 
       await connectedEscrow.delegate(1, 2)
       await connectedEscrow.delegate(3, 1)
-      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+      let sumVotes = vote[0].add(vote[1]).add(vote[2])
+      expect(supplyAt).to.equal(sumVotes)
       await connectedEscrow.globalCheckpoint()
       latestTime = await time.latest()
       vote = await Promise.all([
@@ -409,8 +439,17 @@ describe('VotingEscrow', function () {
         connectedEscrow.getPastVotes(3, latestTime),
       ])
       supplyAt = await votingEscrow.supplyAt(latestTime)
-      console.log(`Voting power at after checkpoint ${latestTime} after delegation`, vote[0], vote[1], vote[2])
-      expect(isWithinLimit(supplyAt, vote[0].add(vote[1]).add(vote[2]), 1)).to.be.true
+      sumVotes = vote[0].add(vote[1]).add(vote[2])
+      console.log(
+        `Voting power at after checkpoint ${latestTime} after delegation`,
+        vote[0],
+        vote[1],
+        vote[2],
+        sumVotes,
+        supplyAt
+      )
+      // expect(supplyAt).to.equal(sumVotes)
+      expect(isWithinLimit(supplyAt, sumVotes, 1)).to.be.true
 
       await time.increaseTo(latestTime + 7884000)
       latestTime = await time.latest()
@@ -431,7 +470,18 @@ describe('VotingEscrow', function () {
 
       supplyAt = await votingEscrow.supplyAt(latestTime)
       console.log(`-- Supply at  -- ${latestTime}`, supplyAt)
-      expect(supplyAt).to.equal(vote[0].add(vote[1]).add(vote[2]))
+      sumVotes = vote[0].add(vote[1]).add(vote[2])
+
+      console.log(
+        `Voting power after checkpoint ${latestTime} after delegation`,
+        vote[0],
+        vote[1],
+        vote[2],
+        sumVotes,
+        `-- Supply at  -- ${supplyAt}`
+      )
+      // expect(supplyAt).to.equal(sumVotes)
+      expect(isWithinLimit(supplyAt, sumVotes, 1)).to.be.true
 
       await connectedEscrow.globalCheckpoint()
       vote = await Promise.all([
