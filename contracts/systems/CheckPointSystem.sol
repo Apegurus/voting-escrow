@@ -15,7 +15,8 @@ contract CheckPointSystem is ReentrancyGuard {
     using SafeCastLibrary for uint256;
 
     int128 internal constant _MAXTIME = 2 * 365 * 86400;
-    int128 internal constant _PRECISSION = 1e12;
+    // TODO: Revisit need of presission
+    int128 internal constant _PRECISSION = 1;
     uint48 public constant _CLOCK_UNIT = 1 days;
 
     /*//////////////////////////////////////////////////////////////
@@ -302,16 +303,6 @@ contract CheckPointSystem is ReentrancyGuard {
 
         return lastPoint;
     }
-
-    function delegateBySig(
-        uint256 delegator,
-        uint256 delegatee,
-        uint256 nonce,
-        uint256 expiry,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external {}
 
     function delegates(uint256 tokenId) external view returns (address) {
         return _delegatee[tokenId].latest();
