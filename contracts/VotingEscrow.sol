@@ -89,7 +89,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         _tokenIdTracker++;
         _mint(to, newTokenId);
         _depositFor(newTokenId, value, unlockTime, lockDetails[newTokenId]);
-        _delegate(newTokenId, newTokenId, unlockTime);
+        _delegate(newTokenId, to, unlockTime);
         // IERC20(payoutToken(newTokenId)).safeTransferFrom(msg.sender, address(this), value);
         return newTokenId;
     }
@@ -108,8 +108,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         return _globalCheckpoint(0, 0, 0, 0, 0);
     }
 
-    function checkpointDelegatee(uint256 _tokenId) external nonReentrant {
-        _baseCheckpointDelegatee(_tokenId);
+    function checkpointDelegatee(address _delegateeAddress) external nonReentrant {
+        _baseCheckpointDelegatee(_delegateeAddress);
     }
 
     /// @notice Deposit and lock tokens for a user
@@ -164,7 +164,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         _checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
     }
 
-    function delegate(uint256 delegator, uint256 delegatee) external override {
+    function delegate(uint256 delegator, address delegatee) external {
+        // TODO: Can only delegate if approved or owner
         _delegate(delegator, delegatee, lockDetails[delegator].endTime);
     }
 

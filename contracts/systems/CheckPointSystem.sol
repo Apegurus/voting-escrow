@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-// TODO:
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
-import {StructCheckpoints} from "../libraries/StructCheckpoints.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
-import {IVotes} from "../interfaces/IVotes.sol";
+import {IVotesEscrow} from "../interfaces/IVotesEscrow.sol";
 import "hardhat/console.sol";
 
-contract CheckPointSystem is IVotes, ReentrancyGuard {
-    using StructCheckpoints for StructCheckpoints.Trace;
-    using Checkpoints for Checkpoints.Trace208;
+contract CheckPointSystem is IVotesEscrow, ReentrancyGuard {
+    using Checkpoints for Checkpoints.Trace;
+    using Checkpoints for Checkpoints.TraceAddress;
     using SafeCastLibrary for int128;
     using SafeCastLibrary for uint256;
 
@@ -25,14 +23,14 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
                              CHECKPOINT STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    StructCheckpoints.Trace private _globalCheckpoints;
+    Checkpoints.Trace private _globalCheckpoints;
     mapping(uint256 => int128) public globalSlopeChanges;
 
-    mapping(uint256 tokenId => StructCheckpoints.Trace) private _userCheckpoints;
+    mapping(uint256 tokenId => Checkpoints.Trace) private _userCheckpoints;
 
-    mapping(uint256 delegatee => StructCheckpoints.Trace) private _delegateCheckpoints;
-    mapping(uint256 tokenId => Checkpoints.Trace208) private _delegatee;
-    mapping(uint256 tokenId => mapping(uint256 => int128)) public delegateeSlopeChanges;
+    mapping(address delegatee => Checkpoints.Trace) private _delegateCheckpoints;
+    mapping(uint256 tokenId => Checkpoints.TraceAddress) private _delegatee;
+    mapping(address tokenId => mapping(uint256 => int128)) public delegateeSlopeChanges;
 
     uint256 public permanentLockBalance;
 
@@ -154,12 +152,12 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
 
             _userCheckpoint(_tokenId, uNewBias, uNewSlope);
 
-            (, uint delegateTs, uint delegateeTokenId) = _delegatee[_tokenId].latestCheckpoint();
+            (, uint delegateTs, address delegateeAddress) = _delegatee[_tokenId].latestCheckpoint();
 
             if (delegateTs != 0) {
                 /// @notice this can likely be handled more efficienttly
-                _checkpointDelegatee(delegateeTokenId, uOldBias, uOldSlope, uOldEndTime, false);
-                _checkpointDelegatee(delegateeTokenId, uNewBias, uNewSlope, uNewEndTime, true);
+                _checkpointDelegatee(delegateeAddress, uOldBias, uOldSlope, uOldEndTime, false);
+                _checkpointDelegatee(delegateeAddress, uNewBias, uNewSlope, uNewEndTime, true);
             }
         }
 
@@ -167,7 +165,7 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
     }
 
     function _userCheckpoint(uint256 _tokenId, int128 bias, int128 slope) internal {
-        _pushStruct(_userCheckpoints[_tokenId], StructCheckpoints.Point({bias: bias, slope: slope, permanent: 0}));
+        _pushStruct(_userCheckpoints[_tokenId], Checkpoints.Point({bias: bias, slope: slope, permanent: 0}));
     }
 
     function _globalCheckpoint(
@@ -177,7 +175,7 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
         int128 uNewBias,
         int128 uNewSlope
     ) internal {
-        (, uint48 lastPoint, StructCheckpoints.Point memory lastGlobal) = _globalCheckpoints.latestCheckpoint();
+        (, uint48 lastPoint, Checkpoints.Point memory lastGlobal) = _globalCheckpoints.latestCheckpoint();
         uint48 lastCheckpoint = lastPoint != 0 ? lastPoint : uint48(block.timestamp);
 
         {
@@ -268,28 +266,28 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
         );
     }
 
-    function getVotes(uint256 tokenId) external view override returns (uint256) {
-        return _getAdjustedVotesCheckpoint(tokenId, SafeCast.toUint48(block.timestamp)).bias.toUint256();
+    function getVotes(address deelegateeAddress) external view returns (uint256) {
+        return _getAdjustedVotesCheckpoint(deelegateeAddress, SafeCast.toUint48(block.timestamp)).bias.toUint256();
     }
 
     /// @notice Retrieves historical voting balance for a token id at a given timestamp.
     /// @dev If a checkpoint does not exist prior to the timestamp, this will return 0.
     ///      The user must also own the token at the time in order to receive a voting balance.
-    /// @param _tokenId .
+    /// @param _deelegateeAddress .
     /// @param _timestamp .
     /// @return votes Total voting balance including delegations at a given timestamp.
-    function getPastVotes(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
-        return _getAdjustedVotesCheckpoint(_tokenId, SafeCast.toUint48(_timestamp)).bias.toUint256();
+    function getPastVotes(address _deelegateeAddress, uint256 _timestamp) external view returns (uint256) {
+        return _getAdjustedVotesCheckpoint(_deelegateeAddress, SafeCast.toUint48(_timestamp)).bias.toUint256();
     }
 
     /// @notice Calculate total voting power at some point in the past
     /// @param _timestamp Time to calculate the total voting power at
     /// @return Total voting power at that time
     function _getAdjustedVotesCheckpoint(
-        uint256 _tokenId,
+        address _delegateeAddress,
         uint48 _timestamp
-    ) internal view returns (StructCheckpoints.Point memory) {
-        (bool exists, uint ts, StructCheckpoints.Point memory lastPoint) = _delegateCheckpoints[_tokenId]
+    ) internal view returns (Checkpoints.Point memory) {
+        (bool exists, uint ts, Checkpoints.Point memory lastPoint) = _delegateCheckpoints[_delegateeAddress]
             .upperLookupRecent(_timestamp);
         if (!exists) return lastPoint;
         uint48 t_i = toGlobalClock(ts);
@@ -300,7 +298,7 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
             if (t_i > _timestamp) {
                 t_i = _timestamp;
             } else {
-                dSlope = delegateeSlopeChanges[_tokenId][t_i];
+                dSlope = delegateeSlopeChanges[_delegateeAddress][t_i];
             }
             if (dSlope != 0) {
                 console.log(
@@ -324,9 +322,6 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
         return _getAdjustedCheckpoint(SafeCast.toUint48(timepoint)).bias.toUint256();
     }
 
-    // TODO: In higher level contract
-    function delegate(uint256 delegator, uint256 delegatee) external virtual override {}
-
     function delegateBySig(
         uint256 delegator,
         uint256 delegatee,
@@ -335,16 +330,16 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external override {}
+    ) external {}
 
-    function delegates(uint256 tokenId) external view override returns (uint256) {
+    function delegates(uint256 tokenId) external view returns (address) {
         return _delegatee[tokenId].latest();
     }
 
     /// @notice Record user delegation checkpoints. Used by voting system.
     /// @dev Skips delegation if already delegated to `delegatee`.
-    function _delegate(uint256 _delegator, uint256 delegatee, uint256 endTime) internal {
-        uint256 currentDelegate = _delegatee[_delegator].latest();
+    function _delegate(uint256 _delegator, address delegatee, uint256 endTime) internal {
+        address currentDelegate = _delegatee[_delegator].latest();
         if (currentDelegate == delegatee) return;
 
         _checkpointDelegator(_delegator, delegatee, endTime);
@@ -359,26 +354,26 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
     ///      If you wish to dedelegate only, use `_delegate(tokenId, 0)` instead.
     /// @param _delegator The delegator to update checkpoints for
     /// @param delegatee The new delegatee for the delegator. Cannot be equal to `_delegator` (use 0 instead).
-    function _checkpointDelegator(uint256 _delegator, uint256 delegatee, uint256 endTime) internal {
-        (, uint ts, StructCheckpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
+    function _checkpointDelegator(uint256 _delegator, address delegatee, uint256 endTime) internal {
+        (, uint ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
         lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / _PRECISSION);
         if (lastPoint.bias < 0) {
             lastPoint.bias = 0;
         }
 
         // Dedelegate from delegatee if delegated
-        uint256 oldDelegatee = _delegatee[_delegator].latest();
+        address oldDelegatee = _delegatee[_delegator].latest();
         console.log(
             "Old Delegatee %s - Ubias: %s - uSlope: %s",
             oldDelegatee,
             lastPoint.bias.toUint256(),
             lastPoint.slope.toUint256()
         );
-        if (oldDelegatee != delegatee && oldDelegatee != 0)
+        if (oldDelegatee != delegatee && oldDelegatee != address(0))
             _checkpointDelegatee(oldDelegatee, lastPoint.bias, lastPoint.slope, endTime, false);
         // Delegate to new delegator
         _checkpointDelegatee(delegatee, lastPoint.bias, lastPoint.slope, endTime, true);
-        _push(_delegatee[_delegator], SafeCast.toUint208(delegatee));
+        _pushAddress(_delegatee[_delegator], delegatee);
     }
 
     /// @notice Update delegatee's `delegatedBalance` by `balance`.
@@ -389,41 +384,41 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
     ///      `delegatedBalance` when a user's balance is modified (e.g. `increaseAmount`, `merge` etc).
     ///      If `delegatee` is 0 (i.e. user is not delegating), then do nothing.
     function _checkpointDelegatee(
-        uint256 delegateeTokenId,
+        address deelegateeAddress,
         int128 uNewBias,
         int128 uSlope,
         uint256 endTime,
         bool _increase
     ) internal {
-        (StructCheckpoints.Point memory lastPoint, uint48 lastCheckpoint) = _baseCheckpointDelegatee(delegateeTokenId);
+        (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) = _baseCheckpointDelegatee(deelegateeAddress);
 
         int128 baseBias = lastPoint.bias -
             (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128()) /
             _PRECISSION;
 
         if (!_increase) {
-            delegateeSlopeChanges[delegateeTokenId][endTime] += uSlope;
+            delegateeSlopeChanges[deelegateeAddress][endTime] += uSlope;
             lastPoint.bias = uNewBias < baseBias ? baseBias - uNewBias : int128(0);
             lastPoint.slope = uSlope < lastPoint.slope ? lastPoint.slope - uSlope : int128(0);
         } else {
-            delegateeSlopeChanges[delegateeTokenId][endTime] -= uSlope;
+            delegateeSlopeChanges[deelegateeAddress][endTime] -= uSlope;
             lastPoint.bias = baseBias + uNewBias;
             lastPoint.slope = lastPoint.slope + uSlope;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
         if (lastPoint.slope == 0) lastPoint.bias = 0;
-        _pushStruct(_delegateCheckpoints[delegateeTokenId], lastPoint);
+        _pushStruct(_delegateCheckpoints[deelegateeAddress], lastPoint);
     }
 
     function _baseCheckpointDelegatee(
-        uint256 delegateeTokenId
-    ) internal returns (StructCheckpoints.Point memory lastPoint, uint48 lastCheckpoint) {
-        (bool exists, uint48 ts, StructCheckpoints.Point memory point) = _delegateCheckpoints[delegateeTokenId]
+        address delegateeAddress
+    ) internal returns (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) {
+        (bool exists, uint48 ts, Checkpoints.Point memory point) = _delegateCheckpoints[delegateeAddress]
             .latestCheckpoint();
         lastPoint = point;
         lastCheckpoint = ts;
         if (exists) {
-            // Go over weeks to fill history and calculate what the current point is
+            // Go over days to fill history and calculate what the current point is
             uint48 t_i = toGlobalClock(lastCheckpoint);
 
             while (t_i != block.timestamp) {
@@ -433,7 +428,7 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
                 if (t_i > block.timestamp) {
                     t_i = uint48(block.timestamp);
                 } else {
-                    dSlope = delegateeSlopeChanges[delegateeTokenId][t_i];
+                    dSlope = delegateeSlopeChanges[delegateeAddress][t_i];
                 }
                 if (dSlope != 0) {
                     console.log(
@@ -445,20 +440,20 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
                     lastPoint.bias -= ((lastPoint.slope * uint256(t_i - lastCheckpoint).toInt128()) / _PRECISSION);
                     lastPoint.slope += dSlope;
                     lastCheckpoint = uint48(t_i);
-                    _delegateCheckpoints[delegateeTokenId].push(lastCheckpoint, lastPoint);
+                    _delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
                 }
             }
         }
     }
 
-    function _push(Checkpoints.Trace208 storage store, uint208 value) private returns (uint208, uint208) {
+    function _pushAddress(Checkpoints.TraceAddress storage store, address value) private returns (address, address) {
         return store.push(clock(), value);
     }
 
     function _pushStruct(
-        StructCheckpoints.Trace storage store,
-        StructCheckpoints.Point memory value
-    ) private returns (StructCheckpoints.Point memory, StructCheckpoints.Point memory) {
+        Checkpoints.Trace storage store,
+        Checkpoints.Point memory value
+    ) private returns (Checkpoints.Point memory, Checkpoints.Point memory) {
         return store.push(clock(), value);
     }
 
@@ -472,10 +467,11 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
     /// @notice Calculate total voting power at some point in the past
     /// @param _timestamp Time to calculate the total voting power at
     /// @return Total voting power at that time
-    function _getAdjustedCheckpoint(uint48 _timestamp) internal view returns (StructCheckpoints.Point memory) {
+    function _getAdjustedCheckpoint(uint48 _timestamp) internal view returns (Checkpoints.Point memory) {
         uint48 clockTime = SafeCast.toUint48(_timestamp);
-        (bool exists, uint48 lastPoint, StructCheckpoints.Point memory lastGlobal) = _globalCheckpoints
-            .upperLookupRecent(clockTime);
+        (bool exists, uint48 lastPoint, Checkpoints.Point memory lastGlobal) = _globalCheckpoints.upperLookupRecent(
+            clockTime
+        );
         if (!exists) return lastGlobal;
         console.log("Global Bias %s - Last Point: %s - Clock() %s", lastGlobal.bias.toUint256(), lastPoint, _timestamp);
         uint48 testTime = toGlobalClock(lastPoint);
@@ -514,7 +510,7 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
     /// @return User voting power
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
         uint48 clockTime = SafeCast.toUint48(_timestamp);
-        (bool exists, uint ts, StructCheckpoints.Point memory lastPoint) = _userCheckpoints[_tokenId].upperLookupRecent(
+        (bool exists, uint ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_tokenId].upperLookupRecent(
             clockTime
         );
         if (!exists) return 0;
@@ -522,4 +518,17 @@ contract CheckPointSystem is IVotes, ReentrancyGuard {
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
         return lastPoint.bias.toUint256();
     }
+
+    function delegates(address account) external view override returns (address) {}
+
+    function delegate(address delegatee) external override {}
+
+    function delegateBySig(
+        address delegatee,
+        uint256 nonce,
+        uint256 expiry,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external override {}
 }
