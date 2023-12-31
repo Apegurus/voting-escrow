@@ -50,7 +50,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         address previousOwner = super._update(to, tokenId, auth);
 
-        // _transferVotingUnits(previousOwner, to, 1);
+        if (to != previousOwner) _delegate(tokenId, to, lockDetails[tokenId].endTime);
 
         return previousOwner;
     }

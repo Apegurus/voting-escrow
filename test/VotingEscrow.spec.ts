@@ -553,4 +553,47 @@ describe('VotingEscrow', function () {
       await validateState(state, votingEscrow, latestTime)
     })
   })
+
+  describe('veNFT transfers', function () {
+    it('Should be able to create and transfer single lock', async function () {
+      const { alice, bob, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const connectedToken = mockToken.connect(alice)
+
+      const balanceBefore = await connectedToken.balanceOf(alice.address)
+
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      let latestTime = await time.latest()
+
+      const balanceAfter = await connectedToken.balanceOf(alice.address)
+
+      let ownerOf = await votingEscrow.ownerOf(1)
+      const lockDetails = await votingEscrow.lockDetails(1)
+      const supplyAt = await votingEscrow.supplyAt(latestTime)
+
+      expect(ownerOf).to.equal(alice.address)
+
+      expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+      expect(lockDetails.amount).to.equal(lockedAmount)
+      const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
+
+      expect(supplyAt).to.equal(vote1)
+
+      await connectedEscrow.transferFrom(alice.address, bob.address, 1)
+      latestTime = await time.latest()
+
+      const [vote2, voteAlice, bias2] = await Promise.all([
+        connectedEscrow.getPastVotes(bob.address, latestTime),
+        connectedEscrow.getPastVotes(alice.address, latestTime),
+        connectedEscrow.balanceOfNFTAt(1, latestTime),
+      ])
+
+      ownerOf = await votingEscrow.ownerOf(1)
+      expect(ownerOf).to.equal(bob.address)
+      expect(vote2).to.equal(bias2)
+      expect(voteAlice).to.equal(0)
+    })
+  })
 })
