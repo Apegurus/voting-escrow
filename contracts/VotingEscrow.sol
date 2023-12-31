@@ -71,64 +71,87 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
      * @param duration Duration in seconds of the lock
      * @param to The receiver of the lock
      */
-    function _createLock(int128 value, uint256 duration, address to) internal virtual returns (uint256) {
-        /// TODO: Where do we normalize this
-        uint256 unlockTime = toGlobalClock(block.timestamp + duration); // Locktime is rounded down to global clock (days)
+    function _createLock(
+        int128 value,
+        uint256 duration,
+        address to,
+        bool permanent
+    ) internal virtual returns (uint256) {
         if (value == 0) revert ZeroAmount();
-        if (unlockTime <= block.timestamp) revert LockDurationNotInFuture();
-        if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
-
+        uint256 unlockTime;
         uint256 newTokenId = _tokenIdTracker;
+        if (!permanent) {
+            /// TODO: Where do we normalize this
+            unlockTime = toGlobalClock(block.timestamp + duration); // Locktime is rounded down to global clock (days)
+            if (unlockTime <= block.timestamp) revert LockDurationNotInFuture();
+            if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
+        }
 
         console.log("End time s%", unlockTime);
 
         _tokenIdTracker++;
         _mint(to, newTokenId);
         lockDetails[newTokenId].startTime = block.timestamp;
-        _depositFor(newTokenId, value, unlockTime, lockDetails[newTokenId]);
+        _updateLock(newTokenId, value, unlockTime, lockDetails[newTokenId], permanent);
         _delegate(newTokenId, to, unlockTime);
         return newTokenId;
     }
 
     ///
-    function createLock(int128 _value, uint256 _lockDuration) external nonReentrant returns (uint256) {
-        return _createLock(_value, _lockDuration, _msgSender());
+    function createLock(int128 _value, uint256 _lockDuration, bool _permanent) external nonReentrant returns (uint256) {
+        return _createLock(_value, _lockDuration, _msgSender(), _permanent);
     }
 
     ///
-    function createLockFor(int128 _value, uint256 _lockDuration, address _to) external nonReentrant returns (uint256) {
-        return _createLock(_value, _lockDuration, _to);
+    function createLockFor(
+        int128 _value,
+        uint256 _lockDuration,
+        address _to,
+        bool _permanent
+    ) external nonReentrant returns (uint256) {
+        return _createLock(_value, _lockDuration, _to, _permanent);
     }
 
     function globalCheckpoint() external nonReentrant {
-        return _globalCheckpoint(0, 0, 0, 0, 0);
+        return _globalCheckpoint(0, 0, 0, 0, 0, 0, 0);
     }
 
     function checkpointDelegatee(address _delegateeAddress) external nonReentrant {
         _baseCheckpointDelegatee(_delegateeAddress);
     }
 
-    /// @notice Deposit and lock tokens for a user
+    /// @notice Deposit & update lock tokens for a user
     /// @param _tokenId NFT that holds lock
     /// @param _value Amount to deposit
     /// @param _unlockTime New time when to unlock the tokens, or 0 if unchanged
     /// @param _oldLocked Previous locked amount / timestamp
-    function _depositFor(uint256 _tokenId, int128 _value, uint256 _unlockTime, LockDetails memory _oldLocked) internal {
+    function _updateLock(
+        uint256 _tokenId,
+        int128 _value,
+        uint256 _unlockTime,
+        LockDetails memory _oldLocked,
+        bool isPermanent
+    ) internal {
         int128 supplyBefore = supply;
         supply = supplyBefore + _value;
 
         // Set newLocked to _oldLocked without mangling memory
         LockDetails memory newLocked;
-        (newLocked.amount, newLocked.startTime, newLocked.endTime) = (
+        (newLocked.amount, newLocked.startTime, newLocked.endTime, newLocked.isPermanent) = (
             _oldLocked.amount,
             _oldLocked.startTime,
-            _oldLocked.endTime
+            _oldLocked.endTime,
+            _oldLocked.isPermanent
         );
 
         // Adding to existing lock, or if a lock is expired - creating a new one
         newLocked.amount += _value;
-        if (_unlockTime != 0) {
+        if (_unlockTime != 0 && !isPermanent) {
             newLocked.endTime = _unlockTime;
+        }
+        if (isPermanent) {
+            newLocked.endTime = 0;
+            newLocked.isPermanent = true;
         }
         lockDetails[_tokenId] = newLocked;
 
@@ -172,6 +195,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     /// @param _timestamp Epoch time to return voting power at
     /// @return balance ser voting power
     function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
+        if (lockDetails[_tokenId].isPermanent) return lockDetails[_tokenId].amount;
         if (lockDetails[_tokenId].endTime < _timestamp) return 0;
         int128 slope = (lockDetails[_tokenId].amount * _PRECISSION) / _MAXTIME;
         balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / _PRECISSION;
@@ -189,22 +213,42 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         if (oldLocked.amount <= 0) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
-        _depositFor(_tokenId, _value.toInt128(), 0, oldLocked);
+        _updateLock(_tokenId, _value.toInt128(), 0, oldLocked, oldLocked.isPermanent);
     }
 
-    function increaseUnlockTime(uint256 _tokenId, uint256 _lockDuration) external nonReentrant {
+    function increaseUnlockTime(uint256 _tokenId, uint256 _lockDuration, bool _permanent) external nonReentrant {
         _checkAuthorized(ownerOf(_tokenId), _msgSender(), _tokenId);
-        IVotingEscrow.LockDetails memory oldLocked = lockDetails[_tokenId];
-        if (oldLocked.isPermanent) revert PermanentLock();
-        uint256 unlockTime = toGlobalClock(block.timestamp + _lockDuration); // Locktime is rounded down to global clock (days)
-
-        if (oldLocked.endTime <= block.timestamp) revert LockExpired();
+        LockDetails memory oldLocked = lockDetails[_tokenId];
+        // if (oldLocked.isPermanent) revert PermanentLock();
         if (oldLocked.amount <= 0) revert NoLockFound();
-        if (unlockTime <= oldLocked.endTime) revert LockDurationNotInFuture();
-        if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
+        uint256 unlockTime;
+        if (!_permanent) {
+            /// TODO: Where do we normalize this
+            unlockTime = toGlobalClock(block.timestamp + _lockDuration); // Locktime is rounded down to global clock (days)
+            if (oldLocked.endTime <= block.timestamp) revert LockExpired();
+            if (unlockTime <= oldLocked.endTime) revert LockDurationNotInFuture();
+            if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
+        }
 
-        _depositFor(_tokenId, 0, unlockTime, oldLocked);
+        _updateLock(_tokenId, 0, unlockTime, oldLocked, _permanent);
 
+        // emit MetadataUpdate(_tokenId);
+    }
+
+    function unlockPermanent(uint256 _tokenId) external nonReentrant {
+        address sender = _msgSender();
+        _checkAuthorized(ownerOf(_tokenId), sender, _tokenId);
+        // if (voted[_tokenId]) revert AlreadyVoted();
+        LockDetails memory newLocked = lockDetails[_tokenId];
+        if (!newLocked.isPermanent) revert NotPermanentLock();
+
+        newLocked.endTime = toGlobalClock(block.timestamp + _MAXTIME.toUint256());
+        newLocked.isPermanent = false;
+
+        _checkpointLock(_tokenId, lockDetails[_tokenId], newLocked);
+        lockDetails[_tokenId] = newLocked;
+
+        // emit UnlockPermanent(sender, _tokenId, _amount, block.timestamp);
         // emit MetadataUpdate(_tokenId);
     }
 
@@ -264,9 +308,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         LockDetails memory newLockedTo;
         newLockedTo.amount = oldLockedTo.amount + oldLockedFrom.amount;
         newLockedTo.isPermanent = oldLockedTo.isPermanent;
-        if (newLockedTo.isPermanent) {
-            permanentLockBalance += oldLockedFrom.amount.toUint256();
-        } else {
+        if (!newLockedTo.isPermanent) {
             newLockedTo.endTime = end;
         }
 
@@ -334,7 +376,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
             // _depositFor(_tokenId, _value.toInt128(), unlock_time, lockDetails[_tokenId]);
 
             _value = (value * amounts[i]) / totalWeight;
-            _createLock(_value.toInt128(), duration, owner);
+            _createLock(_value.toInt128(), duration, owner, locked.isPermanent);
         }
     }
 
@@ -387,7 +429,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     }
 
     function getVotes(address deelegateeAddress) external view returns (uint256) {
-        return _getAdjustedVotesCheckpoint(deelegateeAddress, SafeCast.toUint48(block.timestamp)).bias.toUint256();
+        return _getAdjustedVotes(deelegateeAddress, SafeCast.toUint48(block.timestamp));
     }
 
     /// @notice Retrieves historical voting balance for a token id at a given timestamp.
@@ -397,11 +439,11 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     /// @param _timestamp .
     /// @return votes Total voting balance including delegations at a given timestamp.
     function getPastVotes(address _deelegateeAddress, uint256 _timestamp) external view returns (uint256) {
-        return _getAdjustedVotesCheckpoint(_deelegateeAddress, SafeCast.toUint48(_timestamp)).bias.toUint256();
+        return _getAdjustedVotes(_deelegateeAddress, SafeCast.toUint48(_timestamp));
     }
 
     function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {
-        return _getAdjustedCheckpoint(SafeCast.toUint48(timepoint)).bias.toUint256();
+        return _getAdjustedGlobalVotes(SafeCast.toUint48(timepoint));
     }
 
     function delegate(address account) external override {

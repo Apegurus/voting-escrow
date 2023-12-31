@@ -49,7 +49,7 @@ async function validateState(state: any, votingEscrow: VotingEscrow, testTime: n
     Promise.all(biasPromises),
     Promise.all(locksPromises),
     Promise.all(detailsPromises),
-    votingEscrow.supplyAt(testTime),
+    votingEscrow.getPastTotalSupply(testTime),
   ])
 
   const sumVotes = votes.reduce((total, currVote) => {
@@ -66,9 +66,14 @@ async function validateState(state: any, votingEscrow: VotingEscrow, testTime: n
 
   for (let i = 0; i < state.length; i++) {
     console.log(bias, locks, details, votes)
-    let slope = details[i].amount.mul(PRECISION).div(MAX_TIME)
-    let power = slope.mul(details[i].endTime.sub(testTime)).div(PRECISION)
-    expect(bias[i]).to.equal(power.lte(0) ? 0 : power)
+    if (!details[i].isPermanent) {
+      let slope = details[i].amount.mul(PRECISION).div(MAX_TIME)
+      let power = slope.mul(details[i].endTime.sub(testTime)).div(PRECISION)
+      expect(bias[i]).to.equal(power.lte(0) ? 0 : power)
+    } else {
+      expect(bias[i]).to.equal(details[i].amount)
+      expect(locks[i]).to.equal(details[i].amount)
+    }
     expect(locks[i]).to.equal(bias[i])
     state[i] = {
       ...state[i],
@@ -116,7 +121,7 @@ describe('VotingEscrow', function () {
       const balanceBefore = await connectedToken.balanceOf(alice.address)
       const supplyBefore = await connectedEscrow.supply()
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       const latestTime = await time.latest()
 
       const balanceAfter = await connectedToken.balanceOf(alice.address)
@@ -124,7 +129,7 @@ describe('VotingEscrow', function () {
 
       const ownerOf = await votingEscrow.ownerOf(1)
       const lockDetails = await votingEscrow.lockDetails(1)
-      const supplyAt = await votingEscrow.supplyAt(latestTime)
+      const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
 
       expect(ownerOf).to.equal(alice.address)
 
@@ -137,17 +142,117 @@ describe('VotingEscrow', function () {
       expect(supplyAfter).to.equal(supplyBefore.add(lockedAmount))
     })
 
+    describe('Permanent locking', function () {
+      it('Should be able to create a single permanent lock', async function () {
+        const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+        const supplyBefore = await connectedEscrow.supply()
+
+        await connectedEscrow.createLockFor(lockedAmount, 0, alice.address, true)
+        let latestTime = await time.latest()
+
+        const balanceAfter = await connectedToken.balanceOf(alice.address)
+        const supplyAfter = await connectedEscrow.supply()
+
+        const ownerOf = await votingEscrow.ownerOf(1)
+        const lockDetails = await votingEscrow.lockDetails(1)
+        const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
+
+        expect(ownerOf).to.equal(alice.address)
+
+        expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+        expect(lockDetails.amount).to.equal(lockedAmount)
+        const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
+        const state = [{ tokenId: 1, account: alice }]
+        await validateState(state, votingEscrow, latestTime)
+
+        expect(supplyAt).to.equal(vote1)
+        expect(lockedAmount).to.equal(vote1)
+        expect(supplyAfter).to.equal(supplyBefore.add(lockedAmount))
+
+        await time.increaseTo(latestTime + duration)
+        latestTime = await time.latest()
+        const updatedState = await validateState(state, votingEscrow, latestTime)
+        expect(updatedState[0].votes).to.equal(lockedAmount)
+      })
+
+      it('Should be able to create a single permanent lock and unlock', async function () {
+        const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+        const supplyBefore = await connectedEscrow.supply()
+
+        await connectedEscrow.createLockFor(lockedAmount, 0, alice.address, true)
+        let latestTime = await time.latest()
+        const state = [{ tokenId: 1, account: alice }]
+        await validateState(state, votingEscrow, latestTime)
+
+        await connectedEscrow.unlockPermanent(1)
+        latestTime = await time.latest()
+        await validateState(state, votingEscrow, latestTime)
+      })
+
+      it('Should be able to create a single lock and update to permanent', async function () {
+        const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+        const supplyBefore = await connectedEscrow.supply()
+
+        await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
+        const state = [{ tokenId: 1, account: alice }]
+        let latestTime = await time.latest()
+
+        const balanceAfter = await connectedToken.balanceOf(alice.address)
+        const supplyAfter = await connectedEscrow.supply()
+
+        const ownerOf = await votingEscrow.ownerOf(1)
+        const lockDetails = await votingEscrow.lockDetails(1)
+        const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
+
+        expect(ownerOf).to.equal(alice.address)
+
+        expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+        expect(lockDetails.amount).to.equal(lockedAmount)
+        const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
+
+        expect(supplyAt).to.equal(vote1)
+        expect(supplyAfter).to.equal(supplyBefore.add(lockedAmount))
+
+        await time.increaseTo(latestTime + duration)
+        latestTime = await time.latest()
+        let updatedState = await validateState(state, votingEscrow, latestTime)
+
+        await connectedEscrow.increaseUnlockTime(1, 0, true)
+        latestTime = await time.latest()
+        updatedState = await validateState(state, votingEscrow, latestTime)
+
+        expect(updatedState[0].votes).to.equal(lockedAmount)
+      })
+    })
+
     it('Should be able to increase unlock time', async function () {
       const { alice, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
 
       const connectedEscrow = votingEscrow.connect(alice)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
       let latestTime = await time.latest()
       const state = [{ tokenId: 1, account: alice }]
       await validateState(state, votingEscrow, latestTime)
 
-      await connectedEscrow.increaseUnlockTime(1, duration * 2)
+      await connectedEscrow.increaseUnlockTime(1, duration * 2, false)
       latestTime = await time.latest()
       await validateState(state, votingEscrow, latestTime)
     })
@@ -158,8 +263,8 @@ describe('VotingEscrow', function () {
       const connectedEscrow = votingEscrow.connect(alice)
       const connectedEscrowBob = votingEscrow.connect(bob)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
-      await expect(connectedEscrowBob.increaseUnlockTime(1, duration * 2)).to.be.revertedWithCustomError(
+      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
+      await expect(connectedEscrowBob.increaseUnlockTime(1, duration * 2, false)).to.be.revertedWithCustomError(
         connectedEscrow,
         'ERC721InsufficientApproval'
       )
@@ -177,7 +282,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, oneDay, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, oneDay, alice.address, false)
         const latestTime = await time.latest()
 
         const balanceAfter = await connectedToken.balanceOf(alice.address)
@@ -218,7 +323,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         const latestTime = await time.latest()
 
         const balanceAfter = await connectedToken.balanceOf(alice.address)
@@ -252,7 +357,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, oneDay, bob.address)
+        await connectedEscrow.createLockFor(lockedAmount, oneDay, bob.address, false)
         const latestTime = await time.latest()
 
         const balanceAfter = await connectedToken.balanceOf(alice.address)
@@ -291,7 +396,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, oneDay, bob.address)
+        await connectedEscrow.createLockFor(lockedAmount, oneDay, bob.address, false)
         const latestTime = await time.latest()
 
         const balanceAfter = await connectedToken.balanceOf(alice.address)
@@ -326,7 +431,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
         await validateState([{ tokenId: 1, account: alice }], votingEscrow, latestTime)
@@ -363,7 +468,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
         await validateState([{ tokenId: 1, account: alice }], votingEscrow, latestTime)
@@ -382,7 +487,7 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
         await validateState([{ tokenId: 1, account: alice }], votingEscrow, latestTime)
@@ -424,8 +529,8 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
         await validateState(
@@ -454,8 +559,8 @@ describe('VotingEscrow', function () {
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
         await validateState(
@@ -485,14 +590,14 @@ describe('VotingEscrow', function () {
 
       const balanceBefore = await connectedToken.balanceOf(alice.address)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       const latestTime = await time.latest()
 
       const balanceAfter = await connectedToken.balanceOf(alice.address)
 
       const ownerOf = await votingEscrow.ownerOf(1)
       const lockDetails = await votingEscrow.lockDetails(1)
-      const supplyAt = await votingEscrow.supplyAt(latestTime)
+      const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
 
       expect(ownerOf).to.equal(alice.address)
 
@@ -511,13 +616,13 @@ describe('VotingEscrow', function () {
 
       const connectedEscrow = votingEscrow.connect(alice)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       state.push({ account: alice, tokenId: 1 })
 
-      await connectedEscrow.createLockFor(lockedAmount, duration, bob.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
       state.push({ account: bob, tokenId: 2 })
 
-      await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address, false)
       state.push({ account: calvin, tokenId: 3 })
 
       let latestTime = await time.latest()
@@ -607,22 +712,22 @@ describe('VotingEscrow', function () {
 
       const connectedEscrow = votingEscrow.connect(alice)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       const lockDetails = await votingEscrow.lockDetails(1)
       let latestTime = await time.latest()
-      let supplyAt = await votingEscrow.supplyAt(await latestTime)
+      let supplyAt = await votingEscrow.getPastTotalSupply(await latestTime)
       const vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log('-- Supply after first lock --', supplyAt)
       expect(supplyAt).to.equal(vote)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration, bob.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
       latestTime = await time.latest()
-      supplyAt = await votingEscrow.supplyAt(await latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(await latestTime)
       console.log('-- Supply after second lock --', supplyAt)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address, false)
       latestTime = await time.latest()
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       console.log('-- Supply after third lock --', supplyAt)
 
       state.push({ account: alice, tokenId: 1 })
@@ -690,20 +795,20 @@ describe('VotingEscrow', function () {
 
       const connectedEscrow = votingEscrow.connect(alice)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       const lockDetails = await votingEscrow.lockDetails(1)
       let latestTime = await time.latest()
-      let supplyAt = await votingEscrow.supplyAt(await latestTime)
+      let supplyAt = await votingEscrow.getPastTotalSupply(await latestTime)
       const vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log('-- Supply after first lock --', supplyAt)
       expect(supplyAt).to.equal(vote)
-      await connectedEscrow.createLockFor(lockedAmount, duration, bob.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
       latestTime = await time.latest()
-      supplyAt = await votingEscrow.supplyAt(await latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(await latestTime)
       console.log('-- Supply after second lock --', supplyAt)
-      await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address, false)
       latestTime = await time.latest()
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       console.log('-- Supply after third lock --', supplyAt)
 
       state.push({ account: alice, tokenId: 1 })
@@ -780,12 +885,12 @@ describe('VotingEscrow', function () {
 
       const connectedEscrow = votingEscrow.connect(alice)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       const state = [{ tokenId: 1, account: alice }]
       const lockDetails = await votingEscrow.lockDetails(1)
 
       let latestTime = await time.latest()
-      let supplyAt = await votingEscrow.supplyAt(latestTime)
+      let supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       let vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log('-- Supply after first lock --', supplyAt)
 
@@ -803,7 +908,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after second lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(supplyAt).to.equal(vote)
@@ -816,7 +921,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after third lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(supplyAt).to.equal(vote)
@@ -829,7 +934,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after 4 lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(supplyAt).to.equal(vote)
@@ -842,7 +947,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after 5 lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(supplyAt).to.equal(vote)
@@ -856,12 +961,12 @@ describe('VotingEscrow', function () {
 
       const connectedEscrow = votingEscrow.connect(alice)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       const state = [{ tokenId: 1, account: alice }]
       let lockDetails = await votingEscrow.lockDetails(1)
 
       let latestTime = await time.latest()
-      let supplyAt = await votingEscrow.supplyAt(latestTime)
+      let supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       let vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log('-- Supply after first lock --', supplyAt)
 
@@ -882,7 +987,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       let balance = await connectedEscrow.balanceOfNFTAt(1, latestTime)
       console.log(
@@ -899,7 +1004,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after third lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(isWithinLimit(power, vote, 1)).to.be.true
@@ -914,7 +1019,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after 4 lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(isWithinLimit(power, vote, 1)).to.be.true
@@ -927,7 +1032,7 @@ describe('VotingEscrow', function () {
       slope = lockDetails.amount.mul(PRECISION).div(MAX_TIME)
       power = slope.mul(lockDetails.endTime.sub(latestTime)).div(PRECISION)
 
-      supplyAt = await votingEscrow.supplyAt(latestTime)
+      supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
       vote = await connectedEscrow.getPastVotes(alice.address, latestTime)
       console.log(`-- Supply after 5 lock  ${supplyAt} -- Slope ${slope} -- Power ${power} -- Vote ${vote} --'`)
       expect(isWithinLimit(power, vote, 1)).to.be.true
@@ -945,14 +1050,14 @@ describe('VotingEscrow', function () {
 
       const balanceBefore = await connectedToken.balanceOf(alice.address)
 
-      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       let latestTime = await time.latest()
 
       const balanceAfter = await connectedToken.balanceOf(alice.address)
 
       let ownerOf = await votingEscrow.ownerOf(1)
       const lockDetails = await votingEscrow.lockDetails(1)
-      const supplyAt = await votingEscrow.supplyAt(latestTime)
+      const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
 
       expect(ownerOf).to.equal(alice.address)
 
