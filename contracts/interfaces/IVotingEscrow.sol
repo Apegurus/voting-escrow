@@ -10,4 +10,44 @@ interface IVotingEscrow is IERC5805 {
         bool isPermanent;
         // TODO: Permanent lock?
     }
+
+    error AlreadyVoted();
+    error AmountTooBig();
+    error ERC721ReceiverRejectedTokens();
+    error ERC721TransferToNonERC721ReceiverImplementer();
+    error InvalidNonce();
+    error InvalidSignature();
+    error InvalidSignatureS();
+    error InvalidManagedNFTId();
+    error LockDurationNotInFuture();
+    error LockDurationTooLong();
+    error LockExpired();
+    error LockNotExpired();
+    error NoLockFound();
+    error NonExistentToken();
+    error NotApprovedOrOwner();
+    error NotDistributor();
+    error NotEmergencyCouncilOrGovernor();
+    error NotGovernor();
+    error NotGovernorOrManager();
+    error NotManagedNFT();
+    error NotManagedOrNormalNFT();
+    error NotLockedNFT();
+    error NotNormalNFT();
+    error NotPermanentLock();
+    error NotOwner();
+    error NotTeam();
+    error NotVoter();
+    error OwnershipChange();
+    error PermanentLock();
+    error SameAddress();
+    error SameNFT();
+    error SameState();
+    error SplitNoOwner();
+    error SplitNotAllowed();
+    error SignatureExpired();
+    error TooManyTokenIDs();
+    error ZeroAddress();
+    error ZeroAmount();
+    error ZeroBalance();
 }

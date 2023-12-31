@@ -7,6 +7,7 @@ import '@nomicfoundation/hardhat-chai-matchers'
 import { deployVotingEscrowFicture } from './fixtures/deployVotingEscrow'
 import { isWithinLimit } from './utils'
 import { VotingEscrow } from '../typechain-types'
+import { BigNumber } from 'ethers'
 
 /**
  * Configurable fixture to use for each test file.
@@ -29,6 +30,7 @@ const MAX_TIME = 2 * 365 * 86400
 const PRECISION = 1
 
 async function validateState(state: any, votingEscrow: VotingEscrow, testTime: number) {
+  const votesAccounts = {} as any
   const biasPromises = []
   const votesPromises = []
   const locksPromises = []
@@ -37,7 +39,10 @@ async function validateState(state: any, votingEscrow: VotingEscrow, testTime: n
     biasPromises.push(votingEscrow.balanceOfNFTAt(token.tokenId, testTime))
     locksPromises.push(votingEscrow.balanceOfLockAt(token.tokenId, testTime))
     detailsPromises.push(votingEscrow.lockDetails(token.tokenId))
-    votesPromises.push(votingEscrow.getPastVotes(token.account.address, testTime))
+    if (!votesAccounts[token.account.address] && votesAccounts[token.account.address] !== 0) {
+      votesPromises.push(votingEscrow.getPastVotes(token.account.address, testTime))
+      votesAccounts[token.account.address] = votesPromises.length - 1
+    }
   }
   const [votes, bias, locks, details, supplyAt] = await Promise.all([
     Promise.all(votesPromises),
@@ -60,11 +65,18 @@ async function validateState(state: any, votingEscrow: VotingEscrow, testTime: n
   })
 
   for (let i = 0; i < state.length; i++) {
+    console.log(bias, locks, details, votes)
     let slope = details[i].amount.mul(PRECISION).div(MAX_TIME)
     let power = slope.mul(details[i].endTime.sub(testTime)).div(PRECISION)
     expect(bias[i]).to.equal(power.lte(0) ? 0 : power)
     expect(locks[i]).to.equal(bias[i])
-    state[i] = { ...state[i], bias: bias[i], lock: locks[i], votes: votes[i] }
+    state[i] = {
+      ...state[i],
+      bias: bias[i],
+      lock: locks[i],
+      details: details[i],
+      votes: votes[votesAccounts[state[i].account.address]],
+    }
   }
 
   expect(sumBias).to.equal(sumVotes)
@@ -94,7 +106,377 @@ describe('VotingEscrow', function () {
     expect(loadedFixture).to.not.be.undefined
   })
 
-  describe('Lock Creation', function () {
+  describe('Lock Management', function () {
+    it('Should be able to create a single lock', async function () {
+      const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const connectedToken = mockToken.connect(alice)
+
+      const balanceBefore = await connectedToken.balanceOf(alice.address)
+      const supplyBefore = await connectedEscrow.supply()
+
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address)
+      const latestTime = await time.latest()
+
+      const balanceAfter = await connectedToken.balanceOf(alice.address)
+      const supplyAfter = await connectedEscrow.supply()
+
+      const ownerOf = await votingEscrow.ownerOf(1)
+      const lockDetails = await votingEscrow.lockDetails(1)
+      const supplyAt = await votingEscrow.supplyAt(latestTime)
+
+      expect(ownerOf).to.equal(alice.address)
+
+      expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+      expect(lockDetails.amount).to.equal(lockedAmount)
+      const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
+
+      expect(supplyAt).to.equal(vote1)
+      expect(supplyAfter).to.equal(supplyBefore.add(lockedAmount))
+    })
+
+    it('Should be able to increase unlock time', async function () {
+      const { alice, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+
+      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+      let latestTime = await time.latest()
+      const state = [{ tokenId: 1, account: alice }]
+      await validateState(state, votingEscrow, latestTime)
+
+      await connectedEscrow.increaseUnlockTime(1, duration * 2)
+      latestTime = await time.latest()
+      await validateState(state, votingEscrow, latestTime)
+    })
+
+    it('Should not be able to increase unlock time if unauthorized', async function () {
+      const { alice, bob, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const connectedEscrowBob = votingEscrow.connect(bob)
+
+      await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+      await expect(connectedEscrowBob.increaseUnlockTime(1, duration * 2)).to.be.revertedWithCustomError(
+        connectedEscrow,
+        'ERC721InsufficientApproval'
+      )
+    })
+
+    describe('Withdraw/Claim', function () {
+      it('Should be able to claim after lock expires', async function () {
+        const { alice, votingEscrow, mockToken, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+        const supplyBefore = await connectedEscrow.supply()
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, oneDay, alice.address)
+        const latestTime = await time.latest()
+
+        const balanceAfter = await connectedToken.balanceOf(alice.address)
+        const supplyAfter = await connectedEscrow.supply()
+
+        const ownerOf = await votingEscrow.ownerOf(1)
+        const lockDetails = await votingEscrow.lockDetails(1)
+
+        expect(ownerOf).to.equal(alice.address)
+
+        expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+        expect(lockDetails.amount).to.equal(lockedAmount)
+
+        await time.increaseTo(latestTime + oneDay)
+
+        const vestedPayout = await connectedEscrow.vestedPayout(1)
+        expect(supplyAfter).to.equal(supplyBefore.add(lockedAmount))
+
+        expect(vestedPayout).to.equal(lockedAmount)
+
+        await connectedEscrow.withdraw(1)
+
+        const finalBalance = await connectedToken.balanceOf(alice.address)
+        const finalSupply = await connectedEscrow.supply()
+
+        expect(finalBalance).to.equal(balanceBefore)
+        expect(finalSupply).to.equal(supplyBefore)
+      })
+
+      it('Should not be able to claim before lock expires', async function () {
+        const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        const latestTime = await time.latest()
+
+        const balanceAfter = await connectedToken.balanceOf(alice.address)
+
+        const ownerOf = await votingEscrow.ownerOf(1)
+        const lockDetails = await votingEscrow.lockDetails(1)
+
+        expect(ownerOf).to.equal(alice.address)
+
+        expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+        expect(lockDetails.amount).to.equal(lockedAmount)
+
+        await time.increaseTo(latestTime + oneDay)
+
+        const vestedPayout = await connectedEscrow.vestedPayout(1)
+
+        expect(vestedPayout).to.equal(0)
+
+        await expect(connectedEscrow.withdraw(1)).to.be.revertedWith('ERC5725: No pending payout')
+      })
+
+      it('Should be able to claim on behalf of other user that approved', async function () {
+        const { alice, bob, votingEscrow, mockToken, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedEscrowBob = votingEscrow.connect(bob)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, oneDay, bob.address)
+        const latestTime = await time.latest()
+
+        const balanceAfter = await connectedToken.balanceOf(alice.address)
+
+        const ownerOf = await votingEscrow.ownerOf(1)
+        const lockDetails = await votingEscrow.lockDetails(1)
+
+        expect(ownerOf).to.equal(bob.address)
+
+        expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+        expect(lockDetails.amount).to.equal(lockedAmount)
+
+        await time.increaseTo(latestTime + oneDay)
+
+        await connectedEscrowBob.setApprovalForAll(alice.address, true)
+
+        const vestedPayout = await connectedEscrow.vestedPayout(1)
+
+        expect(vestedPayout).to.equal(lockedAmount)
+
+        await connectedEscrow.withdraw(1)
+
+        const finalBalance = await mockToken.balanceOf(alice.address)
+
+        expect(finalBalance).to.equal(balanceBefore)
+      })
+
+      it('Should not be able to claim on behalf of other user', async function () {
+        const { alice, bob, votingEscrow, mockToken, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedToken = mockToken.connect(alice)
+
+        const balanceBefore = await connectedToken.balanceOf(alice.address)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, oneDay, bob.address)
+        const latestTime = await time.latest()
+
+        const balanceAfter = await connectedToken.balanceOf(alice.address)
+
+        const ownerOf = await votingEscrow.ownerOf(1)
+        const lockDetails = await votingEscrow.lockDetails(1)
+
+        expect(ownerOf).to.equal(bob.address)
+
+        expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+        expect(lockDetails.amount).to.equal(lockedAmount)
+
+        await time.increaseTo(latestTime + oneDay)
+
+        const vestedPayout = await connectedEscrow.vestedPayout(1)
+
+        expect(vestedPayout).to.equal(lockedAmount)
+
+        await expect(connectedEscrow.withdraw(1)).to.be.revertedWithCustomError(
+          connectedEscrow,
+          'ERC721InsufficientApproval'
+        )
+      })
+    })
+
+    describe('Split', function () {
+      it('Should be able to split an unexpired lock in two', async function () {
+        const { alice, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        let latestTime = await time.latest()
+
+        await validateState([{ tokenId: 1, account: alice }], votingEscrow, latestTime)
+        await time.increaseTo(latestTime + oneDay)
+
+        await connectedEscrow.split([50, 50], 1)
+        latestTime = await time.latest()
+
+        const [token1, token2] = await Promise.all([
+          votingEscrow.tokenOfOwnerByIndex(alice.address, 0),
+          votingEscrow.tokenOfOwnerByIndex(alice.address, 1),
+        ])
+        const [lock1, lock2] = await Promise.all([votingEscrow.lockDetails(token1), votingEscrow.lockDetails(token2)])
+
+        expect(lock1.amount).to.equal(lockedAmount / 2)
+        expect(lock1.amount).to.equal(lock2.amount)
+
+        await expect(votingEscrow.ownerOf(1)).to.be.revertedWithCustomError(connectedEscrow, 'ERC721NonexistentToken')
+        await validateState(
+          [
+            { tokenId: token1, account: alice },
+            { tokenId: token2, account: alice },
+          ],
+          votingEscrow,
+          latestTime
+        )
+      })
+
+      it('Should not be able to split an unauthorized veNFT', async function () {
+        const { alice, bob, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedEscrowBob = votingEscrow.connect(bob)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        let latestTime = await time.latest()
+
+        await validateState([{ tokenId: 1, account: alice }], votingEscrow, latestTime)
+        await time.increaseTo(latestTime + oneDay)
+
+        await expect(connectedEscrowBob.split([50, 50], 1)).to.be.revertedWithCustomError(
+          connectedEscrow,
+          'ERC721InsufficientApproval'
+        )
+      })
+
+      it('Should be able to split an unexpired lock in many uneven parts', async function () {
+        const { alice, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        let latestTime = await time.latest()
+
+        await validateState([{ tokenId: 1, account: alice }], votingEscrow, latestTime)
+        await time.increaseTo(latestTime + oneDay)
+
+        const splitAmounts = [50, 20, 10, 5, 15]
+
+        await connectedEscrow.split(splitAmounts, 1)
+        latestTime = await time.latest()
+
+        const tokens = await Promise.all(
+          splitAmounts.map((val, index) => votingEscrow.tokenOfOwnerByIndex(alice.address, index))
+        )
+        const locks = await Promise.all(tokens.map((val) => votingEscrow.lockDetails(val)))
+
+        console.log(tokens, locks)
+        let sumAmounts = BigNumber.from(0)
+        const state = [] as any
+        splitAmounts.forEach((amount, index) => {
+          expect(locks[index].amount).to.equal((lockedAmount * amount) / 100)
+          sumAmounts = sumAmounts.add(locks[index].amount)
+          state.push({
+            tokenId: tokens[index],
+            account: alice,
+          })
+        })
+
+        expect(sumAmounts).to.equal(lockedAmount)
+        const updatedState = await validateState(state, votingEscrow, latestTime)
+        console.log(updatedState)
+      })
+    })
+
+    describe('Merge', function () {
+      it('Should be able to merge two unexpired locks', async function () {
+        const { alice, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        let latestTime = await time.latest()
+
+        await validateState(
+          [
+            { tokenId: 1, account: alice },
+            { tokenId: 2, account: alice },
+          ],
+          votingEscrow,
+          latestTime
+        )
+        await time.increaseTo(latestTime + oneDay)
+
+        await connectedEscrow.merge(1, 2)
+        latestTime = await time.latest()
+
+        const updatedState = await validateState([{ tokenId: 2, account: alice }], votingEscrow, latestTime)
+
+        expect(updatedState[0].details.amount).to.equal(lockedAmount * 2)
+      })
+
+      it('Should not be able to merge an unauthorized veNFT', async function () {
+        const { alice, bob, votingEscrow, duration, lockedAmount } = await loadFixture(fixture)
+
+        const connectedEscrow = votingEscrow.connect(alice)
+        const connectedEscrowBob = votingEscrow.connect(bob)
+
+        const oneDay = 24 * 60 * 60
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address)
+        let latestTime = await time.latest()
+
+        await validateState(
+          [
+            { tokenId: 1, account: alice },
+            { tokenId: 2, account: alice },
+          ],
+          votingEscrow,
+          latestTime
+        )
+        await time.increaseTo(latestTime + oneDay)
+
+        await expect(connectedEscrowBob.merge(1, 2)).to.be.revertedWithCustomError(
+          connectedEscrow,
+          'ERC721InsufficientApproval'
+        )
+      })
+    })
+  })
+
+  describe('General Checkpoint tests', function () {
     it('Should be able to create a single lock', async function () {
       const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
 

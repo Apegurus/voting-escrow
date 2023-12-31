@@ -32,7 +32,7 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable {
     /**
      * @dev See {IERC5725}.
      */
-    function claim(uint256 tokenId) external override(IERC5725) validToken(tokenId) {
+    function claim(uint256 tokenId) external virtual override(IERC5725) validToken(tokenId) {
         require(isApprovedClaimOrOwner(msg.sender, tokenId), "ERC5725: not owner or operator");
 
         uint256 amountClaimed = claimablePayout(tokenId);
