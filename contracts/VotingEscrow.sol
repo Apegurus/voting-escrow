@@ -3,7 +3,6 @@
 
 pragma solidity ^0.8.23;
 
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
@@ -115,7 +114,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     }
 
     function globalCheckpoint() external nonReentrant {
-        return _globalCheckpoint(0, 0, 0, 0, 0, 0, 0);
+        return _globalCheckpoint();
     }
 
     function checkpointDelegatee(address _delegateeAddress) external nonReentrant {
@@ -431,21 +430,21 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     }
 
     function getVotes(address deelegateeAddress) external view returns (uint256) {
-        return _getAdjustedVotes(deelegateeAddress, SafeCast.toUint48(block.timestamp));
+        return _getAdjustedVotes(deelegateeAddress, block.timestamp.toUint48());
     }
 
     /// @notice Retrieves historical voting balance for a token id at a given timestamp.
     /// @dev If a checkpoint does not exist prior to the timestamp, this will return 0.
     ///      The user must also own the token at the time in order to receive a voting balance.
     /// @param _deelegateeAddress .
-    /// @param _timestamp .
+    /// @param _timePoint .
     /// @return votes Total voting balance including delegations at a given timestamp.
-    function getPastVotes(address _deelegateeAddress, uint256 _timestamp) external view returns (uint256) {
-        return _getAdjustedVotes(_deelegateeAddress, SafeCast.toUint48(_timestamp));
+    function getPastVotes(address _deelegateeAddress, uint256 _timePoint) external view returns (uint256) {
+        return _getAdjustedVotes(_deelegateeAddress, _timePoint.toUint48());
     }
 
-    function getPastTotalSupply(uint256 timepoint) external view override returns (uint256) {
-        return _getAdjustedGlobalVotes(SafeCast.toUint48(timepoint));
+    function getPastTotalSupply(uint256 _timePoint) external view override returns (uint256) {
+        return _getAdjustedGlobalVotes(_timePoint.toUint48());
     }
 
     function delegate(address account) external override {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
@@ -149,54 +148,32 @@ contract CheckPointSystem is ReentrancyGuard {
                 // else: we recorded it already in oldDslope
             }
 
-            _userCheckpoint(_tokenId, uNewPoint.bias, uNewPoint.slope, uNewPoint.permanent);
+            _userCheckpoint(_tokenId, uNewPoint);
 
             (, uint48 delegateTs, address delegateeAddress) = _delegatee[_tokenId].latestCheckpoint();
 
             if (delegateTs != 0) {
                 /// @notice this can likely be handled more efficienttly
-                _checkpointDelegatee(
-                    delegateeAddress,
-                    uOldPoint.bias,
-                    uOldPoint.slope,
-                    uOldPoint.permanent,
-                    uOldEndTime,
-                    false
-                );
-                _checkpointDelegatee(
-                    delegateeAddress,
-                    uNewPoint.bias,
-                    uNewPoint.slope,
-                    uNewPoint.permanent,
-                    uNewEndTime,
-                    true
-                );
+                _checkpointDelegatee(delegateeAddress, uOldPoint, uOldEndTime, false);
+                _checkpointDelegatee(delegateeAddress, uNewPoint, uNewEndTime, true);
             }
         }
 
-        _globalCheckpoint(
-            _tokenId,
-            uOldPoint.bias,
-            uOldPoint.slope,
-            uOldPoint.permanent,
-            uNewPoint.bias,
-            uNewPoint.slope,
-            uNewPoint.permanent
-        );
+        _globalCheckpoint(_tokenId, uOldPoint, uNewPoint);
     }
 
-    function _userCheckpoint(uint256 _tokenId, int128 bias, int128 slope, int128 permanent) internal {
-        _pushStruct(_userCheckpoints[_tokenId], Checkpoints.Point({bias: bias, slope: slope, permanent: permanent}));
+    function _userCheckpoint(uint256 _tokenId, Checkpoints.Point memory uNewPoint) internal {
+        _pushStruct(_userCheckpoints[_tokenId], uNewPoint);
+    }
+
+    function _globalCheckpoint() internal {
+        _globalCheckpoint(0, Checkpoints.blankPoint(), Checkpoints.blankPoint());
     }
 
     function _globalCheckpoint(
         uint256 _tokenId,
-        int128 uOldBias,
-        int128 uOldSlope,
-        int128 uOldPermanent,
-        int128 uNewBias,
-        int128 uNewSlope,
-        int128 uNewPermanent
+        Checkpoints.Point memory uOldPoint,
+        Checkpoints.Point memory uNewPoint
     ) internal {
         (, uint48 lastPoint, Checkpoints.Point memory lastGlobal) = _globalCheckpoints.latestCheckpoint();
         uint48 lastCheckpoint = lastPoint != 0 ? lastPoint : uint48(block.timestamp);
@@ -210,7 +187,7 @@ contract CheckPointSystem is ReentrancyGuard {
                 testTime += CLOCK_UNIT;
                 int128 dSlope = 0;
                 if (testTime > block.timestamp) {
-                    testTime = uint48(block.timestamp);
+                    testTime = block.timestamp.toUint48();
                 } else {
                     dSlope = globalSlopeChanges[testTime];
                 }
@@ -224,7 +201,7 @@ contract CheckPointSystem is ReentrancyGuard {
                     lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) /
                         _PRECISSION);
                     lastGlobal.slope += dSlope;
-                    lastCheckpoint = uint48(testTime);
+                    lastCheckpoint = testTime;
                     // _pushStruct(_globalCheckpoints, lastGlobal);
                     _globalCheckpoints.push(lastCheckpoint, lastGlobal);
                 }
@@ -266,9 +243,9 @@ contract CheckPointSystem is ReentrancyGuard {
             //     uNewBias.toUint256()
             // );
 
-            lastGlobal.slope += uNewSlope - uOldSlope;
-            lastGlobal.bias += uNewBias - uOldBias;
-            lastGlobal.permanent += uNewPermanent - uOldPermanent;
+            lastGlobal.slope += uNewPoint.slope - uOldPoint.slope;
+            lastGlobal.bias += uNewPoint.bias - uOldPoint.bias;
+            lastGlobal.permanent += uNewPoint.permanent - uOldPoint.permanent;
         } else {
             // Initial value of testTime is always larger than the ts of the last point
             uint256 testTime = block.timestamp;
@@ -339,7 +316,7 @@ contract CheckPointSystem is ReentrancyGuard {
     }
 
     function delegates(uint256 tokenId) public view returns (address) {
-        return _delegates(tokenId, SafeCast.toUint48(block.timestamp));
+        return _delegates(tokenId, block.timestamp.toUint48());
     }
 
     function delegates(uint256 tokenId, uint48 timestamp) external view returns (address) {
@@ -384,9 +361,9 @@ contract CheckPointSystem is ReentrancyGuard {
         //     lastPoint.slope.toUint256()
         // );
         if (oldDelegatee != delegatee && oldDelegatee != address(0))
-            _checkpointDelegatee(oldDelegatee, lastPoint.bias, lastPoint.slope, lastPoint.permanent, endTime, false);
+            _checkpointDelegatee(oldDelegatee, lastPoint, endTime, false);
         // Delegate to new delegator
-        _checkpointDelegatee(delegatee, lastPoint.bias, lastPoint.slope, lastPoint.permanent, endTime, true);
+        _checkpointDelegatee(delegatee, lastPoint, endTime, true);
         _pushAddress(_delegatee[_delegator], delegatee);
     }
 
@@ -399,9 +376,7 @@ contract CheckPointSystem is ReentrancyGuard {
     ///      If `delegatee` is 0 (i.e. user is not delegating), then do nothing.
     function _checkpointDelegatee(
         address deelegateeAddress,
-        int128 uBias,
-        int128 uSlope,
-        int128 uPermanent,
+        Checkpoints.Point memory userPoint,
         uint256 endTime,
         bool _increase
     ) internal {
@@ -412,15 +387,17 @@ contract CheckPointSystem is ReentrancyGuard {
             _PRECISSION;
 
         if (!_increase) {
-            delegateeSlopeChanges[deelegateeAddress][endTime] += uSlope;
-            lastPoint.bias = uBias < baseBias ? baseBias - uBias : int128(0);
-            lastPoint.slope = uSlope < lastPoint.slope ? lastPoint.slope - uSlope : int128(0);
-            lastPoint.permanent = uPermanent < lastPoint.permanent ? lastPoint.permanent - uPermanent : int128(0);
+            delegateeSlopeChanges[deelegateeAddress][endTime] += userPoint.slope;
+            lastPoint.bias = userPoint.bias < baseBias ? baseBias - userPoint.bias : int128(0);
+            lastPoint.slope = userPoint.slope < lastPoint.slope ? lastPoint.slope - userPoint.slope : int128(0);
+            lastPoint.permanent = userPoint.permanent < lastPoint.permanent
+                ? lastPoint.permanent - userPoint.permanent
+                : int128(0);
         } else {
-            delegateeSlopeChanges[deelegateeAddress][endTime] -= uSlope;
-            lastPoint.bias = baseBias + uBias;
-            lastPoint.slope = lastPoint.slope + uSlope;
-            lastPoint.permanent = lastPoint.permanent + uPermanent;
+            delegateeSlopeChanges[deelegateeAddress][endTime] -= userPoint.slope;
+            lastPoint.bias = baseBias + userPoint.bias;
+            lastPoint.slope = lastPoint.slope + userPoint.slope;
+            lastPoint.permanent = lastPoint.permanent + userPoint.permanent;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
         // if (lastPoint.slope == 0) lastPoint.bias = 0;
@@ -486,7 +463,7 @@ contract CheckPointSystem is ReentrancyGuard {
     /// @param _timestamp Time to calculate the total voting power at
     /// @return Total voting power at that time
     function _getAdjustedCheckpoint(uint48 _timestamp) internal view returns (Checkpoints.Point memory) {
-        uint48 clockTime = SafeCast.toUint48(_timestamp);
+        uint48 clockTime = _timestamp;
         (bool exists, uint48 lastPoint, Checkpoints.Point memory lastGlobal) = _globalCheckpoints.upperLookupRecent(
             clockTime
         );
@@ -529,7 +506,7 @@ contract CheckPointSystem is ReentrancyGuard {
     /// @return User voting power
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
         // TODO: Esto no va aca (carajo)
-        uint48 clockTime = SafeCast.toUint48(_timestamp);
+        uint48 clockTime = _timestamp.toUint48();
         (bool exists, uint48 ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_tokenId].upperLookupRecent(
             clockTime
         );

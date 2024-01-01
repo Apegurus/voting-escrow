@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v5.0.0) (utils/structs/Checkpoints.sol)
-// This file was procedurally generated from scripts/generate/templates/Checkpoints.js.
+// This file was derived from OpenZeppelin Contracts (last updated v5.0.0) (utils/structs/Checkpoints.sol)
 
 pragma solidity ^0.8.23;
 

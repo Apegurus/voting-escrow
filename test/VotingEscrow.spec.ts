@@ -563,7 +563,7 @@ describe('VotingEscrow', function () {
 
         expect(vestedPayout).to.equal(0)
 
-        await expect(connectedEscrow.withdraw(1)).to.be.revertedWithCustomError(connectedEscrow, 'ZeroAmount')
+        await expect(connectedEscrow.withdraw(1)).to.be.revertedWithCustomError(connectedEscrow, 'LockNotExpired')
       })
 
       it('Should be able to claim on behalf of other user that approved', async function () {

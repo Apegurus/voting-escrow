@@ -14,6 +14,21 @@ library SafeCastLibrary {
         return int128(uint128(value));
     }
 
+    /**
+     * @dev Returns the downcasted uint48 from uint256, reverting on
+     * overflow (when the input is greater than largest uint48).
+     *
+     * Counterpart to Solidity's `uint48` operator.
+     *
+     * Requirements:
+     *
+     * - input must fit into 48 bits
+     */
+    function toUint48(uint256 value) internal pure returns (uint48) {
+        if (value > type(uint48).max) revert SafeCastOverflow();
+        return uint48(value);
+    }
+
     /// @dev Safely convert int128 to uint256
     function toUint256(int128 value) internal pure returns (uint256) {
         if (value < 0) revert SafeCastUnderflow();
