@@ -7,6 +7,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC5725} from "./erc5725/ERC5725.sol";
@@ -29,6 +30,12 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     IERC20 public token;
     // Total locked supply
     int128 public supply;
+
+    /// @notice The EIP-712 typehash for the delegation struct used by the contract
+    bytes32 public constant DELEGATION_TYPEHASH =
+        keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
+    /// @notice A record of states for signing / validating signatures
+    mapping(address => uint) public nonces;
 
     constructor(
         string memory name,
@@ -442,7 +449,10 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     }
 
     function delegate(address account) external override {
-        address sender = _msgSender();
+        _delegate(_msgSender(), account);
+    }
+
+    function _delegate(address sender, address account) internal nonReentrant {
         uint balance = balanceOf(sender);
         for (uint i = 0; i < balance; i++) {
             uint tokenId = tokenOfOwnerByIndex(sender, i);
@@ -476,7 +486,19 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external override {}
+    ) external override {
+        require(delegatee != msg.sender);
+        require(delegatee != address(0));
+
+        bytes32 domainSeparator = _domainSeparatorV4();
+        bytes32 structHash = keccak256(abi.encode(DELEGATION_TYPEHASH, delegatee, nonce, expiry));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        address signatory = ECDSA.recover(digest, v, r, s);
+        if (signatory == address(0)) revert InvalidSignature();
+        if (nonce != nonces[signatory]++) revert InvalidNonce();
+        if (block.timestamp > expiry) revert SignatureExpired();
+        return _delegate(signatory, delegatee);
+    }
 
     /*///////////////////////////////////////////////////////////////
                            @dev See {IERC5725}.
