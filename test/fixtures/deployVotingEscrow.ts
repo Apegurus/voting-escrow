@@ -26,6 +26,7 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
   const duration = ONE_YEAR_IN_SECS
   const lockedAmount = ONE_GWEI
   const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS
+  const maxTime = votingEscrow._MAXTIME()
 
-  return { mockToken, votingEscrow, unlockTime, lockedAmount, duration, owner, alice, bob, calvin }
+  return { mockToken, votingEscrow, unlockTime, lockedAmount, maxTime, duration, owner, alice, bob, calvin }
 }
