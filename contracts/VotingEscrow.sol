@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts (last updated v5.0.0) (token/ERC721/extensions/ERC721Votes.sol)
 
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.23;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC5725} from "./erc5725/ERC5725.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -35,7 +34,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     bytes32 public constant DELEGATION_TYPEHASH =
         keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
     /// @notice A record of states for signing / validating signatures
-    mapping(address => uint) public nonces;
+    mapping(address => uint256) public nonces;
 
     constructor(
         string memory name,
@@ -89,7 +88,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
             /// TODO: Where do we normalize this
             unlockTime = toGlobalClock(block.timestamp + duration); // Locktime is rounded down to global clock (days)
             if (unlockTime <= block.timestamp) revert LockDurationNotInFuture();
-            if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
+            if (unlockTime > block.timestamp + MAXTIME.toUint256()) revert LockDurationTooLong();
         }
 
         _tokenIdTracker++;
@@ -193,14 +192,14 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
 
     /// @notice Get the current voting power for `_tokenId`
     /// @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
-    ///      Fetches last user point prior to a certain timestamp, then walks forward to timestamp.
+    ///      Fetches last user point prior to a certain timestamp, theMAXTIMEforward to timestamp.
     /// @param _tokenId NFT for lock
     /// @param _timestamp Epoch time to return voting power at
     /// @return balance ser voting power
     function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
         if (lockDetails[_tokenId].isPermanent) return lockDetails[_tokenId].amount;
         if (lockDetails[_tokenId].endTime < _timestamp) return 0;
-        int128 slope = (lockDetails[_tokenId].amount * _PRECISSION) / _MAXTIME;
+        int128 slope = (lockDetails[_tokenId].amount * _PRECISSION) / MAXTIME;
         balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / _PRECISSION;
     }
 
@@ -227,10 +226,11 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         uint256 unlockTime;
         if (!_permanent) {
             /// TODO: Where do we normalize this
-            unlockTime = toGlobalClock(block.timestamp + _lockDuration); // Locktime is rounded down to global clock (days)
+            unlockTime = toGlobalClock(block.timestamp + _lockDuration);
+            // Locktime is rounded down to global clock (days)
             if (oldLocked.endTime <= block.timestamp) revert LockExpired();
             if (unlockTime <= oldLocked.endTime) revert LockDurationNotInFuture();
-            if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
+            if (unlockTime > block.timestamp + MAXTIME.toUint256()) revert LockDurationTooLong();
         }
 
         _updateLock(_tokenId, 0, unlockTime, oldLocked, _permanent);
@@ -245,7 +245,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         LockDetails memory newLocked = lockDetails[_tokenId];
         if (!newLocked.isPermanent) revert NotPermanentLock();
 
-        newLocked.endTime = toGlobalClock(block.timestamp + _MAXTIME.toUint256());
+        newLocked.endTime = toGlobalClock(block.timestamp + MAXTIME.toUint256());
         newLocked.isPermanent = false;
 
         _checkpointLock(_tokenId, lockDetails[_tokenId], newLocked);
@@ -263,7 +263,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         if (oldLocked.isPermanent) revert PermanentLock();
 
         uint256 amountClaimed = claimablePayout(_tokenId);
-        if (amountClaimed == 0) revert ZeroAmount();
+        if (amountClaimed == 0) revert LockNotExpired();
 
         // Burn the NFT
         _burn(_tokenId);
@@ -337,7 +337,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
      * @param amounts   % of split
      * @param _tokenId  NFTs ID
      */
-    function split(uint[] memory amounts, uint _tokenId) external nonReentrant {
+    function split(uint256[] memory amounts, uint256 _tokenId) external nonReentrant {
         // check permission and vote
         // require(attachments[_tokenId] == 0 && !voted[_tokenId], "attached");
         address sender = _msgSender();
@@ -347,16 +347,16 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
 
         LockDetails memory locked = lockDetails[_tokenId];
 
-        uint end = locked.endTime;
-        uint value = uint(int256(locked.amount));
+        uint256 end = locked.endTime;
+        uint256 value = uint(int256(locked.amount));
         if (value == 0) revert ZeroAmount();
 
         // reset supply, _deposit_for increase it
         supply = supply - value.toInt128();
 
-        uint i;
-        uint totalWeight = 0;
-        uint amountLen = amounts.length;
+        uint256 i;
+        uint256 totalWeight = 0;
+        uint256 amountLen = amounts.length;
         for (i = 0; i < amountLen; i++) {
             totalWeight += amounts[i];
         }
@@ -367,10 +367,10 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         _burn(_tokenId);
 
         if (locked.endTime <= block.timestamp && !locked.isPermanent) revert LockExpired();
-        uint duration = end - block.timestamp;
+        uint256 duration = end - block.timestamp;
 
         // mint
-        uint _value = 0;
+        uint256 _value = 0;
         for (i = 0; i < amountLen; i++) {
             // _tokenId = _tokenIdTracker;
             // _tokenIdTracker++;
@@ -453,27 +453,28 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     }
 
     function _delegate(address sender, address account) internal nonReentrant {
-        uint balance = balanceOf(sender);
-        for (uint i = 0; i < balance; i++) {
-            uint tokenId = tokenOfOwnerByIndex(sender, i);
+        uint256 balance = balanceOf(sender);
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 tokenId = tokenOfOwnerByIndex(sender, i);
             _delegate(tokenId, account, lockDetails[tokenId].endTime);
         }
     }
 
     /**
-     * @notice This funtion is marely a placeholder for ERC5801 compatibility as an account can have multiple delegates in this contract.
+     * @notice This funtion is marely a placeholder for ERC5801 compatibility
+     *  an account can have multiple delegates in this contract.
      * @param delegatee addres of which to check delegate
      */
     function delegates(address delegatee) external view override returns (address) {
-        uint tokenId = tokenOfOwnerByIndex(delegatee, 0);
+        uint256 tokenId = tokenOfOwnerByIndex(delegatee, 0);
         return delegates(tokenId);
     }
 
     function accountDelegates(address delegatee) external view returns (address[] memory) {
-        uint balance = balanceOf(delegatee);
+        uint256 balance = balanceOf(delegatee);
         address[] memory allDelegates = new address[](balance);
-        for (uint i = 0; i < balance; i++) {
-            uint tokenId = tokenOfOwnerByIndex(delegatee, i);
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 tokenId = tokenOfOwnerByIndex(delegatee, i);
             allDelegates[i] = delegates(tokenId);
         }
         return allDelegates;
@@ -487,8 +488,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         bytes32 r,
         bytes32 s
     ) external override {
-        require(delegatee != msg.sender);
-        require(delegatee != address(0));
+        if (delegatee == msg.sender || delegatee != address(0)) revert InvalidDelegatee();
 
         bytes32 domainSeparator = _domainSeparatorV4();
         bytes32 structHash = keccak256(abi.encode(DELEGATION_TYPEHASH, delegatee, nonce, expiry));

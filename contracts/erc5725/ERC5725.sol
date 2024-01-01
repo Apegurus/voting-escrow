@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.23;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC721Enumerable, IERC165} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 /// @dev Official ERC-5725 interface
-import "@erc-5725/interfaces/IERC5725.sol";
+import {IERC5725} from "@erc-5725/interfaces/IERC5725.sol";
 
 abstract contract ERC5725 is IERC5725, ERC721Enumerable {
     using SafeERC20 for IERC20;
@@ -32,17 +31,7 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable {
     /**
      * @dev See {IERC5725}.
      */
-    function claim(uint256 tokenId) external virtual override(IERC5725) validToken(tokenId) {
-        require(isApprovedClaimOrOwner(msg.sender, tokenId), "ERC5725: not owner or operator");
-
-        uint256 amountClaimed = claimablePayout(tokenId);
-        require(amountClaimed > 0, "ERC5725: No pending payout");
-
-        emit PayoutClaimed(tokenId, msg.sender, amountClaimed);
-
-        _payoutClaimed[tokenId] += amountClaimed;
-        IERC20(payoutToken(tokenId)).safeTransfer(msg.sender, amountClaimed);
-    }
+    function claim(uint256 tokenId) external virtual override(IERC5725);
 
     /**
      * @dev See {IERC5725}.
@@ -179,7 +168,7 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable {
      * @param tokenId The NFT `tokenId`.
      */
     function _setClaimApproval(address operator, uint256 tokenId) internal virtual {
-        require(ownerOf(tokenId) == msg.sender, "ERC5725: not owner of tokenId");
+        if (ownerOf(tokenId) != msg.sender) revert ERC721IncorrectOwner(msg.sender, tokenId, ownerOf(tokenId));
         _tokenIdApprovals[tokenId] = operator;
     }
 

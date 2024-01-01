@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.23;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
@@ -13,10 +13,10 @@ contract CheckPointSystem is ReentrancyGuard {
     using SafeCastLibrary for int128;
     using SafeCastLibrary for uint256;
 
-    int128 public constant _MAXTIME = 2 * 365 * 86400;
+    int128 public constant MAXTIME = 2 * 365 * 86400;
     // TODO: Revisit need of presission
     int128 internal constant _PRECISSION = 1;
-    uint48 public constant _CLOCK_UNIT = 1 days;
+    uint48 public constant CLOCK_UNIT = 1 days;
 
     /*//////////////////////////////////////////////////////////////
                              CHECKPOINT STORAGE
@@ -59,14 +59,14 @@ contract CheckPointSystem is ReentrancyGuard {
      * @dev Clock used for flagging global checkpoints.
      */
     function globalClock() public view virtual returns (uint48) {
-        return (Time.timestamp() / _CLOCK_UNIT) * _CLOCK_UNIT;
+        return (Time.timestamp() / CLOCK_UNIT) * CLOCK_UNIT;
     }
 
     /**
      * @dev Clock used for flagging global checkpoints.
      */
     function toGlobalClock(uint256 _timestamp) public pure virtual returns (uint48) {
-        return uint48((_timestamp / _CLOCK_UNIT) * _CLOCK_UNIT);
+        return uint48((_timestamp / CLOCK_UNIT) * CLOCK_UNIT);
     }
 
     /**
@@ -96,8 +96,8 @@ contract CheckPointSystem is ReentrancyGuard {
     ) internal {
         int128 oldDslope = 0;
         int128 newDslope = 0;
-        Checkpoints.Point memory uOldPoint = Checkpoints._blankPoint();
-        Checkpoints.Point memory uNewPoint = Checkpoints._blankPoint();
+        Checkpoints.Point memory uOldPoint = Checkpoints.blankPoint();
+        Checkpoints.Point memory uNewPoint = Checkpoints.blankPoint();
         /// @notice if this is not rounded to days the system will not be able to handle much time without checkpoints
         uNewEndTime = toGlobalClock(uNewEndTime);
         if (_tokenId != 0) {
@@ -107,12 +107,12 @@ contract CheckPointSystem is ReentrancyGuard {
             uOldPoint.permanent = uOldEndTime == 0 ? uOladamount : int128(0);
             if (uOldEndTime > block.timestamp && uOladamount > 0) {
                 // // console.log("1 End Time %s -- Diff %s", uOldEndTime, uOldEndTime - block.timestamp);
-                uOldPoint.slope = (uOladamount * _PRECISSION) / _MAXTIME;
+                uOldPoint.slope = (uOladamount * _PRECISSION) / MAXTIME;
                 uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128()) / _PRECISSION;
             }
             if (uNewEndTime > block.timestamp && uNewAmount > 0) {
                 // // console.log("2 End Time %s -- Diff %s", uNewEndTime, uNewEndTime - block.timestamp);
-                uNewPoint.slope = (uNewAmount * _PRECISSION) / _MAXTIME;
+                uNewPoint.slope = (uNewAmount * _PRECISSION) / MAXTIME;
                 uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / _PRECISSION;
             }
             oldDslope = globalSlopeChanges[uOldEndTime];
@@ -151,7 +151,7 @@ contract CheckPointSystem is ReentrancyGuard {
 
             _userCheckpoint(_tokenId, uNewPoint.bias, uNewPoint.slope, uNewPoint.permanent);
 
-            (, uint delegateTs, address delegateeAddress) = _delegatee[_tokenId].latestCheckpoint();
+            (, uint48 delegateTs, address delegateeAddress) = _delegatee[_tokenId].latestCheckpoint();
 
             if (delegateTs != 0) {
                 /// @notice this can likely be handled more efficienttly
@@ -203,16 +203,16 @@ contract CheckPointSystem is ReentrancyGuard {
 
         {
             // Go over weeks to fill history and calculate what the current point is
-            uint48 t_i = toGlobalClock(lastCheckpoint);
+            uint48 testTime = toGlobalClock(lastCheckpoint);
 
-            while (t_i != block.timestamp) {
-                // LMAO Premium solidity dev over here
-                t_i += _CLOCK_UNIT;
+            while (testTime != block.timestamp) {
+                // TODO: Need to limit number of iterations
+                testTime += CLOCK_UNIT;
                 int128 dSlope = 0;
-                if (t_i > block.timestamp) {
-                    t_i = uint48(block.timestamp);
+                if (testTime > block.timestamp) {
+                    testTime = uint48(block.timestamp);
                 } else {
-                    dSlope = globalSlopeChanges[t_i];
+                    dSlope = globalSlopeChanges[testTime];
                 }
                 if (dSlope != 0) {
                     // console.log(
@@ -221,9 +221,10 @@ contract CheckPointSystem is ReentrancyGuard {
                     //     lastGlobal.bias.toUint256(),
                     //     t_i
                     // );
-                    lastGlobal.bias -= ((lastGlobal.slope * uint256(t_i - lastCheckpoint).toInt128()) / _PRECISSION);
+                    lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) /
+                        _PRECISSION);
                     lastGlobal.slope += dSlope;
-                    lastCheckpoint = uint48(t_i);
+                    lastCheckpoint = uint48(testTime);
                     // _pushStruct(_globalCheckpoints, lastGlobal);
                     _globalCheckpoints.push(lastCheckpoint, lastGlobal);
                 }
@@ -269,8 +270,9 @@ contract CheckPointSystem is ReentrancyGuard {
             lastGlobal.bias += uNewBias - uOldBias;
             lastGlobal.permanent += uNewPermanent - uOldPermanent;
         } else {
-            uint t_i = block.timestamp; // Initial value of t_i is always larger than the ts of the last point
-            lastGlobal.bias -= (lastGlobal.slope * (t_i - lastCheckpoint).toInt128()) / _PRECISSION;
+            // Initial value of testTime is always larger than the ts of the last point
+            uint256 testTime = block.timestamp;
+            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / _PRECISSION;
         }
 
         // console.log(
@@ -305,18 +307,18 @@ contract CheckPointSystem is ReentrancyGuard {
         address _delegateeAddress,
         uint48 _timestamp
     ) internal view returns (Checkpoints.Point memory) {
-        (bool exists, uint ts, Checkpoints.Point memory lastPoint) = _delegateCheckpoints[_delegateeAddress]
+        (bool exists, uint48 ts, Checkpoints.Point memory lastPoint) = _delegateCheckpoints[_delegateeAddress]
             .upperLookupRecent(_timestamp);
         if (!exists) return lastPoint;
-        uint48 t_i = toGlobalClock(ts);
-        while (t_i != _timestamp) {
+        uint48 testTime = toGlobalClock(ts);
+        while (testTime != _timestamp) {
             // LMAO sure way to break everything
-            t_i += _CLOCK_UNIT;
+            testTime += CLOCK_UNIT;
             int128 dSlope = 0;
-            if (t_i > _timestamp) {
-                t_i = _timestamp;
+            if (testTime > _timestamp) {
+                testTime = _timestamp;
             } else {
-                dSlope = delegateeSlopeChanges[_delegateeAddress][t_i];
+                dSlope = delegateeSlopeChanges[_delegateeAddress][testTime];
             }
             if (dSlope != 0) {
                 // console.log(
@@ -325,9 +327,9 @@ contract CheckPointSystem is ReentrancyGuard {
                 //     lastPoint.bias.toUint256(),
                 //     t_i
                 // );
-                lastPoint.bias -= ((lastPoint.slope * uint256(t_i - ts).toInt128()) / _PRECISSION);
+                lastPoint.bias -= ((lastPoint.slope * uint256(testTime - ts).toInt128()) / _PRECISSION);
                 lastPoint.slope += dSlope;
-                ts = uint48(t_i);
+                ts = uint48(testTime);
             }
         }
         int128 change = (lastPoint.slope * uint256(_timestamp - ts).toInt128()) / _PRECISSION;
@@ -367,7 +369,7 @@ contract CheckPointSystem is ReentrancyGuard {
     /// @param _delegator The delegator to update checkpoints for
     /// @param delegatee The new delegatee for the delegator. Cannot be equal to `_delegator` (use 0 instead).
     function _checkpointDelegator(uint256 _delegator, address delegatee, uint256 endTime) internal {
-        (, uint ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
+        (, uint48 ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
         lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / _PRECISSION);
         if (lastPoint.bias < 0) {
             lastPoint.bias = 0;
@@ -434,16 +436,16 @@ contract CheckPointSystem is ReentrancyGuard {
         lastCheckpoint = ts;
         if (exists) {
             // Go over days to fill history and calculate what the current point is
-            uint48 t_i = toGlobalClock(lastCheckpoint);
+            uint48 testTime = toGlobalClock(lastCheckpoint);
 
-            while (t_i != block.timestamp) {
+            while (testTime != block.timestamp) {
                 // LMAO Premium solidity dev over here
-                t_i += _CLOCK_UNIT;
+                testTime += CLOCK_UNIT;
                 int128 dSlope = 0;
-                if (t_i > block.timestamp) {
-                    t_i = uint48(block.timestamp);
+                if (testTime > block.timestamp) {
+                    testTime = uint48(block.timestamp);
                 } else {
-                    dSlope = delegateeSlopeChanges[delegateeAddress][t_i];
+                    dSlope = delegateeSlopeChanges[delegateeAddress][testTime];
                 }
                 if (dSlope != 0) {
                     // console.log(
@@ -452,9 +454,9 @@ contract CheckPointSystem is ReentrancyGuard {
                     //     lastPoint.bias.toUint256(),
                     //     t_i
                     // );
-                    lastPoint.bias -= ((lastPoint.slope * uint256(t_i - lastCheckpoint).toInt128()) / _PRECISSION);
+                    lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / _PRECISSION);
                     lastPoint.slope += dSlope;
-                    lastCheckpoint = uint48(t_i);
+                    lastCheckpoint = uint48(testTime);
                     _delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
                 }
             }
@@ -489,11 +491,12 @@ contract CheckPointSystem is ReentrancyGuard {
             clockTime
         );
         if (!exists) return lastGlobal;
-        // console.log("Global Bias %s - Last Point: %s - Clock() %s", lastGlobal.bias.toUint256(), lastPoint, _timestamp);
+        // console.log("Global Bias %s - Last Point: %s - Clock() %s",
+        // lastGlobal.bias.toUint256(), lastPoint, _timestamp);
         uint48 testTime = toGlobalClock(lastPoint);
         while (testTime != _timestamp) {
             // LMAO sure way to break everything
-            testTime += _CLOCK_UNIT;
+            testTime += CLOCK_UNIT;
             int128 dSlope = 0;
             if (testTime > _timestamp) {
                 testTime = _timestamp;
@@ -527,12 +530,12 @@ contract CheckPointSystem is ReentrancyGuard {
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
         // TODO: Esto no va aca (carajo)
         uint48 clockTime = SafeCast.toUint48(_timestamp);
-        (bool exists, uint ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_tokenId].upperLookupRecent(
+        (bool exists, uint48 ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_tokenId].upperLookupRecent(
             clockTime
         );
         if (!exists) return 0;
         if (lastPoint.permanent != 0) return lastPoint.permanent.toUint256();
-        int128 change = (((lastPoint.slope * (clockTime - ts).toInt128()) / _PRECISSION));
+        int128 change = (((lastPoint.slope * uint256(clockTime - ts).toInt128()) / _PRECISSION));
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
         return lastPoint.bias.toUint256();
     }

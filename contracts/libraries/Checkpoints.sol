@@ -2,7 +2,7 @@
 // OpenZeppelin Contracts (last updated v5.0.0) (utils/structs/Checkpoints.sol)
 // This file was procedurally generated from scripts/generate/templates/Checkpoints.js.
 
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.23;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -14,11 +14,6 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  * checkpoint for the current transaction block using the {push} function.
  */
 library Checkpoints {
-    /**
-     * @dev A value was attempted to be inserted on a past checkpoint.
-     */
-    error CheckpointUnorderedInsertions();
-
     struct Trace {
         Checkpoint[] _checkpoints;
     }
@@ -33,6 +28,11 @@ library Checkpoints {
         uint48 _key;
         Point _value;
     }
+
+    /**
+     * @dev A value was attempted to be inserted on a past checkpoint.
+     */
+    error CheckpointUnorderedInsertions();
 
     /**
      * @dev Pushes a (`key`, `value`) pair into a Trace so that it is stored as the checkpoint.
@@ -53,7 +53,7 @@ library Checkpoints {
     function lowerLookup(Trace storage self, uint48 key) internal view returns (Point memory) {
         uint256 len = self._checkpoints.length;
         uint256 pos = _lowerBinaryLookup(self._checkpoints, key, 0, len);
-        return pos == len ? _blankPoint() : _unsafeAccess(self._checkpoints, pos)._value;
+        return pos == len ? blankPoint() : _unsafeAccess(self._checkpoints, pos)._value;
     }
 
     /**
@@ -68,7 +68,7 @@ library Checkpoints {
         uint256 pos = _upperBinaryLookup(self._checkpoints, key, 0, len);
 
         exists = pos != 0;
-        _value = exists ? _unsafeAccess(self._checkpoints, pos - 1)._value : _blankPoint();
+        _value = exists ? _unsafeAccess(self._checkpoints, pos - 1)._value : blankPoint();
         _key = exists ? _unsafeAccess(self._checkpoints, pos - 1)._key : 0;
     }
 
@@ -100,7 +100,7 @@ library Checkpoints {
         uint256 pos = _upperBinaryLookup(self._checkpoints, key, low, high);
 
         exists = pos != 0;
-        _value = exists ? _unsafeAccess(self._checkpoints, pos - 1)._value : _blankPoint();
+        _value = exists ? _unsafeAccess(self._checkpoints, pos - 1)._value : blankPoint();
         _key = exists ? _unsafeAccess(self._checkpoints, pos - 1)._key : 0;
     }
 
@@ -109,7 +109,7 @@ library Checkpoints {
      */
     function latest(Trace storage self) internal view returns (Point memory) {
         uint256 pos = self._checkpoints.length;
-        return pos == 0 ? _blankPoint() : _unsafeAccess(self._checkpoints, pos - 1)._value;
+        return pos == 0 ? blankPoint() : _unsafeAccess(self._checkpoints, pos - 1)._value;
     }
 
     /**
@@ -121,7 +121,7 @@ library Checkpoints {
     ) internal view returns (bool exists, uint48 _key, Point memory _value) {
         uint256 pos = self._checkpoints.length;
         if (pos == 0) {
-            return (false, 0, _blankPoint());
+            return (false, 0, blankPoint());
         } else {
             Checkpoint memory ckpt = _unsafeAccess(self._checkpoints, pos - 1);
             return (true, ckpt._key, ckpt._value);
@@ -171,7 +171,7 @@ library Checkpoints {
             return (last._value, value);
         } else {
             self.push(Checkpoint({_key: key, _value: value}));
-            return (_blankPoint(), value);
+            return (blankPoint(), value);
         }
     }
 
@@ -243,7 +243,7 @@ library Checkpoints {
         }
     }
 
-    function _blankPoint() internal pure returns (Point memory) {
+    function blankPoint() internal pure returns (Point memory) {
         return Point({bias: 0, slope: 0, permanent: 0});
     }
 
