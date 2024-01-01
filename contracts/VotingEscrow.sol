@@ -8,14 +8,12 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Votes} from "@openzeppelin/contracts/governance/utils/Votes.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC5725} from "./erc5725/ERC5725.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
 import {CheckPointSystem} from "./systems/CheckPointSystem.sol";
-import "hardhat/console.sol";
 
 /**
  * @dev Extension of ERC721 to support voting and delegation as implemented by {Votes}
@@ -86,8 +84,6 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
             if (unlockTime <= block.timestamp) revert LockDurationNotInFuture();
             if (unlockTime > block.timestamp + _MAXTIME.toUint256()) revert LockDurationTooLong();
         }
-
-        console.log("End time s%", unlockTime);
 
         _tokenIdTracker++;
         _mint(to, newTokenId);
@@ -220,7 +216,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         _checkAuthorized(ownerOf(_tokenId), _msgSender(), _tokenId);
         LockDetails memory oldLocked = lockDetails[_tokenId];
         // if (oldLocked.isPermanent) revert PermanentLock();
-        if (oldLocked.amount <= 0) revert NoLockFound();
+
         uint256 unlockTime;
         if (!_permanent) {
             /// TODO: Where do we normalize this
@@ -260,7 +256,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         if (oldLocked.isPermanent) revert PermanentLock();
 
         uint256 amountClaimed = claimablePayout(_tokenId);
-        require(amountClaimed > 0, "ERC5725: No pending payout");
+        if (amountClaimed == 0) revert ZeroAmount();
 
         // Burn the NFT
         _burn(_tokenId);
@@ -339,15 +335,14 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         // require(attachments[_tokenId] == 0 && !voted[_tokenId], "attached");
         address sender = _msgSender();
         address owner = _ownerOf(_tokenId);
-        if (owner == address(0)) revert SplitNoOwner();
+        _checkAuthorized(owner, sender, _tokenId);
         // if (voted[_from]) revert AlreadyVoted();
 
-        _checkAuthorized(owner, sender, _tokenId);
         LockDetails memory locked = lockDetails[_tokenId];
 
         uint end = locked.endTime;
         uint value = uint(int256(locked.amount));
-        require(value > 0); // dev: need non-zero value
+        if (value == 0) revert ZeroAmount();
 
         // reset supply, _deposit_for increase it
         supply = supply - value.toInt128();
@@ -447,14 +442,32 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     }
 
     function delegate(address account) external override {
-        uint balance = balanceOf(account);
+        address sender = _msgSender();
+        uint balance = balanceOf(sender);
         for (uint i = 0; i < balance; i++) {
-            uint tokenId = tokenByIndex(i);
+            uint tokenId = tokenOfOwnerByIndex(sender, i);
             _delegate(tokenId, account, lockDetails[tokenId].endTime);
         }
     }
 
-    function delegates(address delegatee) external view override returns (address) {}
+    /**
+     * @notice This funtion is marely a placeholder for ERC5801 compatibility as an account can have multiple delegates in this contract.
+     * @param delegatee addres of which to check delegate
+     */
+    function delegates(address delegatee) external view override returns (address) {
+        uint tokenId = tokenOfOwnerByIndex(delegatee, 0);
+        return delegates(tokenId);
+    }
+
+    function accountDelegates(address delegatee) external view returns (address[] memory) {
+        uint balance = balanceOf(delegatee);
+        address[] memory allDelegates = new address[](balance);
+        for (uint i = 0; i < balance; i++) {
+            uint tokenId = tokenOfOwnerByIndex(delegatee, i);
+            allDelegates[i] = delegates(tokenId);
+        }
+        return allDelegates;
+    }
 
     function delegateBySig(
         address delegatee,
@@ -511,21 +524,4 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
      *
      * ALL THE GOVERNANCE SHIT
      */
-
-    /**
-     * @dev Returns the balance of `account`.
-     *
-     * WARNING: Overriding this function will likely result in incorrect vote tracking.
-     */
-    function _getVotingUnits(address account) internal view virtual returns (uint256) {
-        return balanceOf(account);
-    }
-
-    /**
-     * @dev See {ERC721-_increaseBalance}. We need that to account tokens that were minted in batch.
-     */
-    function _increaseBalance(address account, uint128 amount) internal virtual override {
-        super._increaseBalance(account, amount);
-        // _transferVotingUnits(address(0), account, amount);
-    }
 }
