@@ -154,6 +154,9 @@ const config: HardhatUserConfig = {
   networks: {
     ...networkConfig,
     hardhat: {
+      accounts: {
+        count: 400,
+      },
       gas: 'auto',
       gasPrice: 'auto',
     },

@@ -30,6 +30,7 @@ const MAX_TIME = 2 * 365 * 86400
 const PRECISION = 1
 
 async function validateState(state: any, votingEscrow: VotingEscrow, testTime: number) {
+  console.time('validatestate')
   const votesAccounts = {} as any
   const biasPromises = []
   const votesPromises = []
@@ -68,7 +69,7 @@ async function validateState(state: any, votingEscrow: VotingEscrow, testTime: n
   })
 
   for (let i = 0; i < state.length; i++) {
-    console.log(bias, locks, details, votes)
+    // console.log(bias, locks, details, votes)
     if (!details[i].isPermanent) {
       let slope = details[i].amount.mul(PRECISION).div(MAX_TIME)
       let power = slope.mul(details[i].endTime.sub(testTime)).div(PRECISION)
@@ -87,7 +88,6 @@ async function validateState(state: any, votingEscrow: VotingEscrow, testTime: n
       votes: votes[votesAccounts[state[i].account.address]],
     }
   }
-
   expect(sumBias).to.equal(sumVotes)
   expect(sumLocks).to.equal(sumVotes)
   expect(supplyAt).to.equal(sumVotes)
@@ -968,6 +968,67 @@ describe('VotingEscrow', function () {
           .add(finalState[3].bias)
           .add(finalState[4].bias)
       )
+    })
+
+    it('Should be able to process two years worth of checkpoints', async function () {
+      this.timeout(800000)
+      const { alice, bob, votingEscrow, votingEscrowTestHelper, lockedAmount, accounts } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const oneDay = 24 * 60 * 60
+      const state = [] as any
+      let params = {
+        amount: [],
+        duration: [],
+        to: [],
+        isPermanent: [],
+      } as any
+
+      console.time('createLocks')
+      await Promise.all(
+        accounts.map((account, index) => {
+          const duration = oneDay * (index + 1)
+          if (duration > MAX_TIME) return
+          state.push({ tokenId: index + 1, account: account })
+          params.amount.push(lockedAmount)
+          params.duration.push(duration)
+          params.to.push(account.address)
+          params.isPermanent.push(false)
+          if (index % 50 === 0) {
+            console.log(index, params)
+            const currentParams = { ...params }
+            params = {
+              amount: [],
+              duration: [],
+              to: [],
+              isPermanent: [],
+            }
+            return votingEscrowTestHelper.createManyLocks(
+              currentParams.amount,
+              currentParams.duration,
+              currentParams.to,
+              currentParams.isPermanent
+            )
+          }
+          // await connectedEscrow.createLockFor(lockedAmount, oneDay * (index + 1), account.address, false)
+          // await votingEscrow.connect(account)['delegate(address)'](alice.address)
+        })
+      )
+      console.log(state)
+      console.timeEnd('createLocks')
+
+      let latestTime = await time.latest()
+      console.log('validating state')
+      await validateState(state, votingEscrow, latestTime)
+      await time.increaseTo(latestTime + MAX_TIME)
+      latestTime = await time.latest()
+      await validateState(state, votingEscrow, latestTime)
+
+      await connectedEscrow['delegate(address)'](bob.address)
+      latestTime = await time.latest()
+
+      const finalState = await validateState(state, votingEscrow, latestTime)
+      console.log(finalState)
     })
   })
 

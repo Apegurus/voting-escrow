@@ -5,19 +5,23 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
   const [owner, alice, bob, calvin] = await _ethers.getSigners()
 
   const ERC20Mock = await _ethers.getContractFactory('ERC20Mock')
-  const mockToken = await ERC20Mock.deploy('1000000000000000000000000000000', 18, 'ERC20Mock', 'MOCK')
+  const mockToken = await ERC20Mock.deploy('100000000000000000000000000000000000', 18, 'ERC20Mock', 'MOCK')
 
   const VotingEscrow = await _ethers.getContractFactory('VotingEscrow')
   const votingEscrow = await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)
 
+  const VotingEscrowTestHelper = await _ethers.getContractFactory('VotingEscrowTestHelper')
+  const votingEscrowTestHelper = await VotingEscrowTestHelper.deploy(votingEscrow.address)
+
   await Promise.all([
-    mockToken.approve(votingEscrow.address, '1000000000000000000000000000000'),
+    mockToken.approve(votingEscrow.address, '100000000000000000000000000000000000'),
     mockToken.transfer(alice.address, '1000000000000000000000'),
     mockToken.transfer(bob.address, '1000000000000000000000'),
     mockToken.transfer(calvin.address, '1000000000000000000000'),
-    mockToken.connect(alice).approve(votingEscrow.address, '1000000000000000000000000000000'),
-    mockToken.connect(bob).approve(votingEscrow.address, '1000000000000000000000000000000'),
-    mockToken.connect(calvin).approve(votingEscrow.address, '1000000000000000000000000000000'),
+    mockToken.transfer(votingEscrowTestHelper.address, '100000000000000000000000000000'),
+    mockToken.connect(alice).approve(votingEscrow.address, '100000000000000000000000000000000000'),
+    mockToken.connect(bob).approve(votingEscrow.address, '100000000000000000000000000000000000'),
+    mockToken.connect(calvin).approve(votingEscrow.address, '100000000000000000000000000000000000'),
   ])
 
   const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60
@@ -28,5 +32,17 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
   const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS
   const maxTime = votingEscrow.MAXTIME()
 
-  return { mockToken, votingEscrow, unlockTime, lockedAmount, maxTime, duration, owner, alice, bob, calvin }
+  return {
+    mockToken,
+    votingEscrow,
+    votingEscrowTestHelper,
+    unlockTime,
+    lockedAmount,
+    maxTime,
+    duration,
+    owner,
+    alice,
+    bob,
+    calvin,
+  }
 }
