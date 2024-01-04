@@ -4,7 +4,6 @@
 pragma solidity ^0.8.23;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -36,11 +35,11 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     mapping(address => uint256) public nonces;
 
     constructor(
-        string memory name,
-        string memory symbol,
+        string memory _name,
+        string memory _symbol,
         string memory version,
         IERC20 mainToken
-    ) ERC721(name, symbol) EIP712(name, version) {
+    ) ERC721(_name, _symbol) EIP712(_name, version) {
         token = mainToken;
     }
 
@@ -133,8 +132,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         LockDetails memory _oldLocked,
         bool isPermanent
     ) internal {
-        int128 supplyBefore = supply;
-        supply = supplyBefore + _value;
+        supply += _value;
 
         // Set newLocked to _oldLocked without mangling memory
         LockDetails memory newLocked;
@@ -163,9 +161,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         // newLocked.end > block.timestamp (always)
         _checkpointLock(_tokenId, _oldLocked, newLocked);
 
-        address from = _msgSender();
         if (_value != 0) {
-            token.safeTransferFrom(from, address(this), _value.toUint256());
+            token.safeTransferFrom(_msgSender(), address(this), _value.toUint256());
         }
 
         // emit Deposit(from, _tokenId, _depositType, _value, newLocked.end, block.timestamp);
@@ -187,19 +184,6 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     function delegate(uint256 delegator, address delegatee) external {
         // TODO: Can only delegate if approved or owner
         _delegate(delegator, delegatee, lockDetails[delegator].endTime);
-    }
-
-    /// @notice Get the current voting power for `_tokenId`
-    /// @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
-    ///      Fetches last user point prior to a certain timestamp, theMAXTIMEforward to timestamp.
-    /// @param _tokenId NFT for lock
-    /// @param _timestamp Epoch time to return voting power at
-    /// @return balance ser voting power
-    function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
-        if (lockDetails[_tokenId].isPermanent) return lockDetails[_tokenId].amount;
-        if (lockDetails[_tokenId].endTime < _timestamp) return 0;
-        int128 slope = (lockDetails[_tokenId].amount * _PRECISSION) / MAXTIME;
-        balance = (slope * (lockDetails[_tokenId].endTime - _timestamp).toInt128()) / _PRECISSION;
     }
 
     /// @notice Deposit `_value` tokens for `_tokenId` and add to the lock
@@ -284,17 +268,12 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         _claim(_tokenId);
     }
 
-    function withdraw(uint256 _tokenId) external {
-        _claim(_tokenId);
-    }
-
     function merge(uint256 _from, uint256 _to) external nonReentrant {
-        address sender = _msgSender();
         // if (voted[_from]) revert AlreadyVoted();
         if (_from == _to) revert SameNFT();
 
-        _checkAuthorized(ownerOf(_from), sender, _from);
-        _checkAuthorized(ownerOf(_to), sender, _to);
+        _checkAuthorized(ownerOf(_from), _msgSender(), _from);
+        _checkAuthorized(ownerOf(_to), _msgSender(), _to);
 
         IVotingEscrow.LockDetails memory oldLockedTo = lockDetails[_to];
         if (oldLockedTo.endTime <= block.timestamp && !oldLockedTo.isPermanent) revert LockExpired();
@@ -339,9 +318,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     function split(uint256[] memory amounts, uint256 _tokenId) external nonReentrant {
         // check permission and vote
         // require(attachments[_tokenId] == 0 && !voted[_tokenId], "attached");
-        address sender = _msgSender();
         address owner = _ownerOf(_tokenId);
-        _checkAuthorized(owner, sender, _tokenId);
+        _checkAuthorized(owner, _msgSender(), _tokenId);
         // if (voted[_from]) revert AlreadyVoted();
 
         LockDetails memory locked = lockDetails[_tokenId];
@@ -351,7 +329,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         if (value == 0) revert ZeroAmount();
 
         // reset supply, _deposit_for increase it
-        supply = supply - value.toInt128();
+        supply -= value.toInt128();
 
         uint256 i;
         uint256 totalWeight = 0;
@@ -413,21 +391,6 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     /*///////////////////////////////////////////////////////////////
                            @dev See {IERC5805}.
     //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @dev Clock used for flagging checkpoints.
-     */
-    function clock() public view override(CheckPointSystem, IERC6372) returns (uint48) {
-        return super.clock();
-    }
-
-    /**
-     * @dev Machine-readable description of the clock as specified in EIP-6372.
-     */
-    // solhint-disable-next-line func-name-mixedcase
-    function CLOCK_MODE() public view override(CheckPointSystem, IERC6372) returns (string memory) {
-        return super.CLOCK_MODE();
-    }
 
     function getVotes(address deelegateeAddress) external view returns (uint256) {
         return _getAdjustedVotes(deelegateeAddress, block.timestamp.toUint48());

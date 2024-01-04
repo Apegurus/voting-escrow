@@ -2,9 +2,12 @@
 pragma solidity ^0.8.13;
 
 import {VotingEscrow} from "../VotingEscrow.sol";
+import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 
 contract VotingEscrowTestHelper {
     VotingEscrow public votingescrow;
+    using SafeCastLibrary for uint256;
+    using SafeCastLibrary for int128;
 
     constructor(address _votingEscrow) {
         votingescrow = VotingEscrow(_votingEscrow);
@@ -20,5 +23,19 @@ contract VotingEscrowTestHelper {
         for (uint256 i = 0; i < _value.length; i++) {
             votingescrow.createLockFor(_value[i], _lockDuration[i], _to[i], _permanent[i]);
         }
+    }
+
+    /// @notice Get the current voting power for `_tokenId`
+    /// @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
+    ///      Fetches last user point prior to a certain timestamp, theMAXTIMEforward to timestamp.
+    /// @param _tokenId NFT for lock
+    /// @param _timestamp Epoch time to return voting power at
+    /// @return balance ser voting power
+    function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
+        (int128 amount, , uint256 endTime, bool isPermanent) = votingescrow.lockDetails(_tokenId);
+        if (isPermanent) return amount;
+        if (endTime < _timestamp) return 0;
+        int128 slope = (amount * votingescrow._PRECISSION()) / votingescrow.MAXTIME();
+        balance = (slope * (endTime - _timestamp).toInt128()) / votingescrow._PRECISSION();
     }
 }

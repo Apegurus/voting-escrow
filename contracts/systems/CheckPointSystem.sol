@@ -2,11 +2,12 @@
 pragma solidity ^0.8.23;
 
 import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
+import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
 
-contract CheckPointSystem is ReentrancyGuard {
+contract CheckPointSystem is ReentrancyGuard, IERC6372 {
     using Checkpoints for Checkpoints.Trace;
     using Checkpoints for Checkpoints.TraceAddress;
     using SafeCastLibrary for int128;
@@ -14,7 +15,7 @@ contract CheckPointSystem is ReentrancyGuard {
 
     int128 public constant MAXTIME = 2 * 365 * 86400;
     // TODO: Revisit need of presission
-    int128 internal constant _PRECISSION = 1;
+    int128 public constant _PRECISSION = 1;
     uint48 public constant CLOCK_UNIT = 1 days;
 
     /*//////////////////////////////////////////////////////////////

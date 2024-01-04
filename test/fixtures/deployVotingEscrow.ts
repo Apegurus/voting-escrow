@@ -13,16 +13,14 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
   const VotingEscrowTestHelper = await _ethers.getContractFactory('VotingEscrowTestHelper')
   const votingEscrowTestHelper = await VotingEscrowTestHelper.deploy(votingEscrow.address)
 
-  await Promise.all([
-    mockToken.approve(votingEscrow.address, '100000000000000000000000000000000000'),
-    mockToken.transfer(alice.address, '1000000000000000000000'),
-    mockToken.transfer(bob.address, '1000000000000000000000'),
-    mockToken.transfer(calvin.address, '1000000000000000000000'),
-    mockToken.transfer(votingEscrowTestHelper.address, '100000000000000000000000000000'),
-    mockToken.connect(alice).approve(votingEscrow.address, '100000000000000000000000000000000000'),
-    mockToken.connect(bob).approve(votingEscrow.address, '100000000000000000000000000000000000'),
-    mockToken.connect(calvin).approve(votingEscrow.address, '100000000000000000000000000000000000'),
-  ])
+  await mockToken.approve(votingEscrow.address, '100000000000000000000000000000000000')
+  await mockToken.transfer(alice.address, '1000000000000000000000')
+  await mockToken.transfer(bob.address, '1000000000000000000000')
+  await mockToken.transfer(calvin.address, '1000000000000000000000')
+  await mockToken.transfer(votingEscrowTestHelper.address, '100000000000000000000000000000')
+  await mockToken.connect(alice).approve(votingEscrow.address, '100000000000000000000000000000000000')
+  await mockToken.connect(bob).approve(votingEscrow.address, '100000000000000000000000000000000000')
+  await mockToken.connect(calvin).approve(votingEscrow.address, '100000000000000000000000000000000000')
 
   const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60
   const ONE_GWEI = 1_000_000_000
@@ -30,7 +28,8 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
   const duration = ONE_YEAR_IN_SECS
   const lockedAmount = ONE_GWEI
   const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS
-  const maxTime = votingEscrow.MAXTIME()
+  const maxTime = await votingEscrow.MAXTIME()
+  const clockUnit = await votingEscrow.CLOCK_UNIT()
 
   return {
     mockToken,
@@ -39,6 +38,7 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
     unlockTime,
     lockedAmount,
     maxTime,
+    clockUnit,
     duration,
     owner,
     alice,
