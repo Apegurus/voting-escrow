@@ -1,6 +1,6 @@
 import { ethers } from 'hardhat'
 // https://hardhat.org/hardhat-network-helpers/docs/reference
-import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
+import { time, loadFixture, mine } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
 import '@nomicfoundation/hardhat-chai-matchers'
 
@@ -10,6 +10,7 @@ import { VotingEscrow, VotingEscrowTestHelper } from '../typechain-types'
 import { BigNumber } from 'ethers'
 import { chunk } from 'lodash'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
+import { token } from '../typechain-types/@openzeppelin/contracts'
 
 /**
  * Configurable fixture to use for each test file.
@@ -120,6 +121,49 @@ async function finalStateCheck(
       expect(currentState[i].lock).to.equal(testState[i].lock)
     }
   }
+}
+
+async function createManyLocks(
+  accounts: SignerWithAddress[],
+  increment: number,
+  votingEscrowTestHelper: VotingEscrowTestHelper,
+  lockedAmount: number,
+  latestTokenId: number,
+  state: any
+) {
+  const chunkSize = 25
+  const chunkedAccounts = chunk(accounts, chunkSize)
+  let chunkNumber = 0
+  for (const thisAccounts of chunkedAccounts) {
+    let params = {
+      amount: [],
+      duration: [],
+      to: [],
+      isPermanent: [],
+    } as any
+    thisAccounts.map((account: SignerWithAddress, index: number) => {
+      const duration = increment * (chunkNumber + index + 1)
+      if (duration > MAX_TIME) return
+      const tokenId = latestTokenId + 1
+      state.push({ tokenId, account: account })
+      params.amount.push(lockedAmount)
+      params.duration.push(duration)
+      params.to.push(account.address)
+      params.isPermanent.push(false)
+      latestTokenId = tokenId
+    })
+    if (params.amount.length !== 0) {
+      console.time(`createLock-${chunkNumber}`)
+      console.log(
+        `creating ${params.amount.length} locks from ${latestTokenId - params.amount.length} to ${latestTokenId}`
+      )
+      await votingEscrowTestHelper.createManyLocks(params.amount, params.duration, params.to, params.isPermanent)
+      console.timeEnd(`createLock-${chunkNumber}`)
+      chunkNumber += params.amount.length
+    }
+  }
+  await mine(1)
+  return { state, latestTokenId }
 }
 
 describe('VotingEscrow', function () {
@@ -978,13 +1022,15 @@ describe('VotingEscrow', function () {
       await connectedEscrow.createLock(lockedAmount, duration * 2, false)
       await connectedEscrow.createLock(lockedAmount, duration * 2, false)
       await connectedEscrow.createLock(lockedAmount, duration * 2, false)
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
       await connectedEscrow.createLockFor(lockedAmount, duration * 2, bob.address, false)
       const state = [
         { tokenId: 1, account: alice },
         { tokenId: 2, account: alice },
         { tokenId: 3, account: alice },
         { tokenId: 4, account: alice },
-        { tokenId: 5, account: bob },
+        { tokenId: 5, account: alice },
+        { tokenId: 6, account: bob },
       ]
       let latestTime = await time.latest()
       await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
@@ -997,58 +1043,43 @@ describe('VotingEscrow', function () {
       console.log(finalState)
       console.log(aliceBalance)
       expect(finalState[0].votes).to.equal(0)
-      expect(finalState[4].votes).to.equal(
+      expect(finalState[5].votes).to.equal(
         finalState[0].bias
           .add(finalState[1].bias)
           .add(finalState[2].bias)
           .add(finalState[3].bias)
           .add(finalState[4].bias)
+          .add(finalState[5].bias)
       )
     })
 
-    it.skip('Should be able to process two years worth of checkpoints', async function () {
+    it('Should be able to process two years worth of checkpoints', async function () {
       this.timeout(800000)
-      const chunkSize = 50
-      const limit = 500
       const { alice, bob, votingEscrow, clockUnit, votingEscrowTestHelper, lockedAmount, accounts } = await loadFixture(
         fixture
       )
 
       const connectedEscrow = votingEscrow.connect(alice)
-      const state = [] as any
+      let latestTokenId = (await votingEscrow.totalSupply()).toNumber()
+      let state = [] as any
 
       console.log(accounts.length)
       console.time('createLocks')
-      const chunkedAccounts = chunk(accounts, chunkSize)
-      let chunkNumber = 0
-      for (const thisAccounts of chunkedAccounts) {
-        console.time(`createLock-${chunkNumber}`)
-        let params = {
-          amount: [],
-          duration: [],
-          to: [],
-          isPermanent: [],
-        } as any
-        thisAccounts.map((account: SignerWithAddress, index: number) => {
-          const tokenId = chunkNumber + index + 1
-          const duration = clockUnit * tokenId
-          if (duration > MAX_TIME || tokenId > limit) return
-          state.push({ tokenId, account: account })
-          params.amount.push(lockedAmount)
-          params.duration.push(duration)
-          params.to.push(account.address)
-          params.isPermanent.push(false)
-        })
-        console.log(`creating ${params.amount.length} locks from ${chunkNumber} to ${chunkNumber + chunkSize}`)
-        await votingEscrowTestHelper.createManyLocks(params.amount, params.duration, params.to, params.isPermanent)
-        console.timeEnd(`createLock-${chunkNumber}`)
-        chunkNumber += chunkSize
-      }
-      console.log(state)
+      let result = await createManyLocks(
+        accounts,
+        clockUnit,
+        votingEscrowTestHelper,
+        lockedAmount,
+        latestTokenId,
+        state
+      )
+      state = result.state
+      latestTokenId = result.latestTokenId
+
       console.timeEnd('createLocks')
 
       let latestTime = await time.latest()
-      console.log('validating state')
+
       await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
       await time.increaseTo(latestTime + MAX_TIME)
       latestTime = await time.latest()
@@ -1064,8 +1095,15 @@ describe('VotingEscrow', function () {
       latestTime = await time.latest()
       totalSupply = await votingEscrow.getPastTotalSupply(latestTime)
 
-      // const finalState = await validateState(state, votingEscrow,  votingEscrowTestHelper, latestTime)
-      // console.log(finalState)
+      const finalState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
+      console.log(finalState)
+
+      result = await createManyLocks(accounts, clockUnit, votingEscrowTestHelper, lockedAmount, latestTokenId, state)
+      state = result.state
+      latestTokenId = result.latestTokenId
+      latestTime = await time.latest()
+      const newState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
+      console.log(newState)
     })
   })
 
