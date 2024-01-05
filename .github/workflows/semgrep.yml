@@ -5,10 +5,10 @@
 name: Run Semgrep
 
 on:
-  push:
-    branches: [main]
+  # push:
+  # branches: [main]
   # Scan changed files in PRs (diff-aware scanning):
-  pull_request: {}
+  # pull_request: {}
   # On-demand
   workflow_dispatch: {}
 
