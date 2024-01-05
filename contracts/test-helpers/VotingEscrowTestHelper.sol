@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.23;
 
 import {VotingEscrow} from "../VotingEscrow.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
@@ -35,7 +35,7 @@ contract VotingEscrowTestHelper {
         (int128 amount, , uint256 endTime, bool isPermanent) = votingescrow.lockDetails(_tokenId);
         if (isPermanent) return amount;
         if (endTime < _timestamp) return 0;
-        int128 slope = (amount * votingescrow._PRECISSION()) / votingescrow.MAXTIME();
-        balance = (slope * (endTime - _timestamp).toInt128()) / votingescrow._PRECISSION();
+        int128 slope = (amount * votingescrow.PRECISSION()) / votingescrow.MAXTIME();
+        balance = (slope * (endTime - _timestamp).toInt128()) / votingescrow.PRECISSION();
     }
 }

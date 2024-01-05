@@ -6,7 +6,6 @@ import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
-import "hardhat/console.sol";
 
 /**
  * @title CheckPointSystem
@@ -22,7 +21,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
     int128 public constant MAXTIME = 2 * 365 * 86400;
     /// @notice Precision of calculations
     // TODO: This is unused - Revisit need and eventually remove
-    int128 public constant _PRECISSION = 1;
+    int128 public constant PRECISSION = 1;
     /// @notice Unit of time for the clock
     uint48 public constant CLOCK_UNIT = 7 days;
 
@@ -125,12 +124,12 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             uNewPoint.permanent = uNewEndTime == 0 ? uNewAmount : int128(0);
             uOldPoint.permanent = uOldEndTime == 0 ? uOladamount : int128(0);
             if (uOldEndTime > block.timestamp && uOladamount > 0) {
-                uOldPoint.slope = (uOladamount * _PRECISSION) / MAXTIME;
-                uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128()) / _PRECISSION;
+                uOldPoint.slope = (uOladamount * PRECISSION) / MAXTIME;
+                uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128()) / PRECISSION;
             }
             if (uNewEndTime > block.timestamp && uNewAmount > 0) {
-                uNewPoint.slope = (uNewAmount * _PRECISSION) / MAXTIME;
-                uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / _PRECISSION;
+                uNewPoint.slope = (uNewAmount * PRECISSION) / MAXTIME;
+                uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / PRECISSION;
             }
             oldDslope = globalSlopeChanges[uOldEndTime];
             if (uNewEndTime != 0) {
@@ -211,7 +210,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         {
             // Go over weeks to fill history and calculate what the current point is
             uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
-            uint maxTime = testTime + MAXTIME.toUint256();
+            uint256 maxTime = testTime + MAXTIME.toUint256();
 
             while (testTime != block.timestamp) {
                 testTime += CLOCK_UNIT;
@@ -222,14 +221,8 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                     dSlope = globalSlopeChanges[testTime];
                 }
                 if (dSlope != 0) {
-                    console.log(
-                        "Last slope %s - Last Bias: %s - Clock() %s",
-                        lastGlobal.slope.toUint256(),
-                        lastGlobal.bias.toUint256(),
-                        testTime
-                    );
                     lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) /
-                        _PRECISSION);
+                        PRECISSION);
                     lastGlobal.slope += dSlope;
                     lastCheckpoint = testTime;
                     _globalCheckpoints.push(lastCheckpoint, lastGlobal);
@@ -241,7 +234,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         if (_tokenId != 0) {
             lastGlobal.bias =
                 lastGlobal.bias -
-                ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()) / _PRECISSION);
+                ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()) / PRECISSION);
 
             lastGlobal.slope += uNewPoint.slope - uOldPoint.slope;
             lastGlobal.bias += uNewPoint.bias - uOldPoint.bias;
@@ -249,7 +242,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         } else {
             // Initial value of testTime is always larger than the ts of the last point
             uint256 testTime = block.timestamp;
-            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / _PRECISSION;
+            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / PRECISSION;
         }
 
         _pushStruct(_globalCheckpoints, lastGlobal);
@@ -281,7 +274,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         ].upperLookupRecent(_timestamp);
         if (!exists) return lastPoint;
         uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
-        uint maxTime = testTime + MAXTIME.toUint256();
+        uint256 maxTime = testTime + MAXTIME.toUint256();
         while (testTime != _timestamp) {
             testTime += CLOCK_UNIT;
             int128 dSlope = 0;
@@ -291,19 +284,13 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                 dSlope = delegateeSlopeChanges[_delegateeAddress][testTime];
             }
             if (dSlope != 0) {
-                console.log(
-                    "Last slope %s - Last Bias: %s - Clock() %s",
-                    lastPoint.slope.toUint256(),
-                    lastPoint.bias.toUint256(),
-                    testTime
-                );
-                lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128()) / _PRECISSION);
+                lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISSION);
                 lastPoint.slope += dSlope;
                 lastCheckpointTs = uint48(testTime);
             }
             if (testTime > maxTime) break;
         }
-        int128 change = (lastPoint.slope * uint256(_timestamp - lastCheckpointTs).toInt128()) / _PRECISSION;
+        int128 change = (lastPoint.slope * uint256(_timestamp - lastCheckpointTs).toInt128()) / PRECISSION;
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
 
         return lastPoint;
@@ -363,7 +350,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
      */
     function _checkpointDelegator(uint256 _delegator, address delegatee, uint256 endTime) internal {
         (, uint48 ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
-        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / _PRECISSION);
+        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISSION);
         if (lastPoint.bias < 0) {
             lastPoint.bias = 0;
         }
@@ -395,7 +382,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
 
         int128 baseBias = lastPoint.bias -
             (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128()) /
-            _PRECISSION;
+            PRECISSION;
 
         if (!_increase) {
             delegateeSlopeChanges[deelegateeAddress][endTime] += userPoint.slope;
@@ -432,7 +419,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             // Go over days to fill history and calculate what the current point is
             uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
 
-            uint maxTime = testTime + MAXTIME.toUint256();
+            uint256 maxTime = testTime + MAXTIME.toUint256();
 
             // Iterate over time until current block timestamp or maxtime
             while (testTime != block.timestamp) {
@@ -444,13 +431,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                     dSlope = delegateeSlopeChanges[delegateeAddress][testTime];
                 }
                 if (dSlope != 0) {
-                    console.log(
-                        "Last slope %s - Last Bias: %s - Clock() %s",
-                        lastPoint.slope.toUint256(),
-                        lastPoint.bias.toUint256(),
-                        testTime
-                    );
-                    lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / _PRECISSION);
+                    lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISSION);
                     lastPoint.slope += dSlope;
                     lastCheckpoint = uint48(testTime);
                     _delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
@@ -504,7 +485,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             .upperLookupRecent(clockTime);
         if (!exists) return lastGlobal;
         uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
-        uint maxTime = testTime + MAXTIME.toUint256();
+        uint256 maxTime = testTime + MAXTIME.toUint256();
 
         // Iterate over time until the specified timestamp or maxtime is reached
         while (testTime != _timestamp) {
@@ -516,20 +497,14 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                 dSlope = globalSlopeChanges[testTime];
             }
             if (dSlope != 0) {
-                console.log(
-                    "Last slope %s - Last Bias: %s - Clock() %s",
-                    lastGlobal.slope.toUint256(),
-                    lastGlobal.bias.toUint256(),
-                    testTime
-                );
-                lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128()) / _PRECISSION);
+                lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISSION);
                 lastGlobal.slope += dSlope;
                 lastCheckpointTs = uint48(testTime);
             }
             if (testTime > maxTime) break;
         }
 
-        int128 change = (lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128()) / _PRECISSION;
+        int128 change = (lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128()) / PRECISSION;
         lastGlobal.bias = lastGlobal.bias < change ? int128(0) : lastGlobal.bias - change;
 
         return lastGlobal;
@@ -550,7 +525,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         );
         if (!exists) return 0;
         if (lastPoint.permanent != 0) return lastPoint.permanent.toUint256();
-        int128 change = (((lastPoint.slope * uint256(clockTime - ts).toInt128()) / _PRECISSION));
+        int128 change = (((lastPoint.slope * uint256(clockTime - ts).toInt128()) / PRECISSION));
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
         return lastPoint.bias.toUint256();
     }
