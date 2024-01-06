@@ -101,6 +101,15 @@ async function validateState(
       votes: votes[votesAccounts[state[i].account.address]],
     }
   }
+
+  for (const token of state) {
+    /// @note check that individual sum of delegated biases equals to total voting power of delegatee
+    const delegatedVotes = state.reduce((total: BigNumber, current: any) => {
+      if (current.delegates !== token.account.address) return total
+      return total.add(current.bias)
+    }, BigNumber.from(0))
+    expect(token.votes).to.equal(delegatedVotes)
+  }
   expect(sumBias).to.equal(sumVotes)
   expect(sumLocks).to.equal(sumVotes)
   expect(supplyAt).to.equal(sumVotes)
@@ -151,7 +160,7 @@ async function createManyLocks(
       const duration = increment * (chunkNumber + index + 1)
       if (duration > MAX_TIME) return
       const tokenId = latestTokenId + 1
-      state.push({ tokenId, account: account })
+      state.push({ tokenId, account: account, delegatee: delegatee ?? account.address })
       params.amount.push(lockedAmount)
       params.duration.push(duration)
       params.to.push(account.address)
