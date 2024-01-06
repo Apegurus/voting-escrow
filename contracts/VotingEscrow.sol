@@ -78,6 +78,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         int128 value,
         uint256 duration,
         address to,
+        address _delegatee,
         bool permanent
     ) internal virtual returns (uint256) {
         if (value == 0) revert ZeroAmount();
@@ -94,7 +95,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         _mint(to, newTokenId);
         lockDetails[newTokenId].startTime = block.timestamp;
         _updateLock(newTokenId, value, unlockTime, lockDetails[newTokenId], permanent);
-        _delegate(newTokenId, to, unlockTime);
+        _delegate(newTokenId, _delegatee, unlockTime);
         return newTokenId;
     }
 
@@ -106,7 +107,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
      * @return The id of the newly created token
      */
     function createLock(int128 _value, uint256 _lockDuration, bool _permanent) external nonReentrant returns (uint256) {
-        return _createLock(_value, _lockDuration, _msgSender(), _permanent);
+        return _createLock(_value, _lockDuration, _msgSender(), _msgSender(), _permanent);
     }
 
     /**
@@ -123,7 +124,26 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         address _to,
         bool _permanent
     ) external nonReentrant returns (uint256) {
-        return _createLock(_value, _lockDuration, _to, _permanent);
+        return _createLock(_value, _lockDuration, _to, _to, _permanent);
+    }
+
+    /**
+     * @notice Creates a lock for a specified address
+     * @param _value The total assets to be locked over time
+     * @param _lockDuration Duration in seconds of the lock
+     * @param _to The receiver of the lock
+     * @param _delegatee The receiver of the lock
+     * @param _permanent Whether the lock is permanent or not
+     * @return The id of the newly created token
+     */
+    function createDelegatedLockFor(
+        int128 _value,
+        uint256 _lockDuration,
+        address _to,
+        address _delegatee,
+        bool _permanent
+    ) external nonReentrant returns (uint256) {
+        return _createLock(_value, _lockDuration, _to, _delegatee, _permanent);
     }
 
     /**
@@ -416,7 +436,8 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         uint256 _value = 0;
         for (i = 0; i < amountLen; i++) {
             _value = (value * amounts[i]) / totalWeight;
-            _createLock(_value.toInt128(), duration, owner, locked.isPermanent);
+            // TODO: Revist this and decide if ownerr is delegatee or past delegatee should be used
+            _createLock(_value.toInt128(), duration, owner, owner, locked.isPermanent);
         }
     }
 

@@ -18,10 +18,11 @@ contract VotingEscrowTestHelper {
         int128[] memory _value,
         uint256[] memory _lockDuration,
         address[] memory _to,
+        address[] memory _delegtatee,
         bool[] memory _permanent
     ) public {
         for (uint256 i = 0; i < _value.length; i++) {
-            votingEscrow.createLockFor(_value[i], _lockDuration[i], _to[i], _permanent[i]);
+            votingEscrow.createDelegatedLockFor(_value[i], _lockDuration[i], _to[i], _delegtatee[i], _permanent[i]);
         }
     }
 
@@ -32,8 +33,9 @@ contract VotingEscrowTestHelper {
     /// @param _timestamp Epoch time to return voting power at
     /// @return balance ser voting power
     function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
-        (int128 amount, , uint256 endTime, bool isPermanent) = votingEscrow.lockDetails(_tokenId);
+        (int128 amount, uint256 startTime, uint256 endTime, bool isPermanent) = votingEscrow.lockDetails(_tokenId);
         if (isPermanent) return amount;
+        if (startTime > _timestamp) return 0;
         if (endTime < _timestamp) return 0;
         int128 slope = (amount * votingEscrow.PRECISION()) / votingEscrow.MAX_TIME();
         balance = (slope * (endTime - _timestamp).toInt128()) / votingEscrow.PRECISION();
