@@ -176,9 +176,7 @@ describe('VotingEscrow', function () {
   describe('Lock Management', function () {
     describe('Create veNFT', function () {
       it('Should be able to create a single lock', async function () {
-        const { alice, votingEscrow, votingEscrowTestHelper, mockToken, duration, lockedAmount } = await loadFixture(
-          fixture
-        )
+        const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
         const connectedToken = mockToken.connect(alice)
@@ -201,9 +199,13 @@ describe('VotingEscrow', function () {
         expect(lockDetails.amount).to.equal(lockedAmount)
         expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
 
-        const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
+        const [balanceofNFT, vote] = await Promise.all([
+          connectedEscrow.balanceOfNFT(1),
+          connectedEscrow.getVotes(alice.address),
+        ])
 
-        expect(supplyAt).to.equal(vote1)
+        expect(balanceofNFT).to.equal(vote)
+        expect(supplyAt).to.equal(vote)
         expect(supplyAfter).to.equal(supplyBefore.add(lockedAmount))
       })
 
@@ -1013,6 +1015,46 @@ describe('VotingEscrow', function () {
       })
     })
 
+    it('Should have 0 voting power after duration of lock', async function () {
+      const { alice, votingEscrow, votingEscrowTestHelper, clockUnit, duration, lockedAmount } = await loadFixture(
+        fixture
+      )
+
+      const connectedEscrow = votingEscrow.connect(alice)
+
+      await connectedEscrow.createLock(lockedAmount, duration * 2, false)
+      await connectedEscrow.createLock(lockedAmount, duration * 2, false)
+      await connectedEscrow.createLock(lockedAmount, duration * 2, false)
+      const state = [
+        { tokenId: 1, account: alice },
+        { tokenId: 2, account: alice },
+        { tokenId: 3, account: alice },
+      ]
+      let latestTime = await time.latest()
+      await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
+
+      await time.increaseTo(latestTime + duration * 2 + clockUnit * 2)
+      latestTime = await time.latest()
+
+      const aliceVotingPower = await connectedEscrow.getVotes(alice.address)
+      const totalSupply = await connectedEscrow.totalSupply()
+      await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
+      expect(aliceVotingPower).to.equal(0)
+      expect(aliceVotingPower).to.equal(totalSupply)
+    })
+
+    it('Should have 0 voting power on initialization', async function () {
+      const { alice, bob, votingEscrow } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+
+      const bobVotes = await connectedEscrow.getVotes(bob.address)
+      const balanceofNFT = await connectedEscrow.balanceOfNFT(1)
+
+      expect(bobVotes).to.equal(0)
+      expect(balanceofNFT).to.equal(0)
+    })
+
     it('Should delegate all veNFTs of one address', async function () {
       const { alice, bob, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
@@ -1060,10 +1102,9 @@ describe('VotingEscrow', function () {
       )
 
       const connectedEscrow = votingEscrow.connect(alice)
-      let latestTokenId = (await votingEscrow.totalSupply()).toNumber()
+      let latestTokenId = (await votingEscrow.totalNftsMinted()).toNumber()
       let state = [] as any
 
-      console.log(accounts.length)
       console.time('createLocks')
       let result = await createManyLocks(
         accounts,
@@ -1108,10 +1149,16 @@ describe('VotingEscrow', function () {
   })
 
   describe('General Checkpoint tests', function () {
+    it('Should bring 0 supply before initialization', async function () {
+      const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const totalSupply = await votingEscrow.totalSupply()
+
+      expect(totalSupply).to.equal(0)
+    })
+
     it('Should be able to create a single lock', async function () {
-      const { alice, votingEscrow, votingEscrowTestHelper, mockToken, duration, lockedAmount } = await loadFixture(
-        fixture
-      )
+      const { alice, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
 
       const connectedEscrow = votingEscrow.connect(alice)
       const connectedToken = mockToken.connect(alice)
@@ -1126,6 +1173,7 @@ describe('VotingEscrow', function () {
       const ownerOf = await votingEscrow.ownerOf(1)
       const lockDetails = await votingEscrow.lockDetails(1)
       const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
+      const totalSupply = await votingEscrow.totalSupply()
 
       expect(ownerOf).to.equal(alice.address)
 
@@ -1135,6 +1183,7 @@ describe('VotingEscrow', function () {
       const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
 
       expect(supplyAt).to.equal(vote1)
+      expect(totalSupply).to.equal(supplyAt)
     })
 
     it('Should be able to create and delegate locks', async function () {
@@ -1616,6 +1665,45 @@ describe('VotingEscrow', function () {
       expect(ownerOf).to.equal(bob.address)
       expect(vote2).to.equal(bias2)
       expect(voteAlice).to.equal(0)
+    })
+
+    it('Should be able to create and transfer single lock to himself', async function () {
+      const { alice, bob, votingEscrow, mockToken, duration, lockedAmount } = await loadFixture(fixture)
+
+      const connectedEscrow = votingEscrow.connect(alice)
+      const connectedToken = mockToken.connect(alice)
+
+      const balanceBefore = await connectedToken.balanceOf(alice.address)
+
+      await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
+      let latestTime = await time.latest()
+
+      const balanceAfter = await connectedToken.balanceOf(alice.address)
+
+      let ownerOf = await votingEscrow.ownerOf(1)
+      const lockDetails = await votingEscrow.lockDetails(1)
+      const supplyAt = await votingEscrow.getPastTotalSupply(latestTime)
+
+      expect(ownerOf).to.equal(alice.address)
+
+      expect(balanceAfter).to.equal(balanceBefore.sub(lockedAmount))
+
+      expect(lockDetails.amount).to.equal(lockedAmount)
+      const [vote1] = await Promise.all([connectedEscrow.getPastVotes(alice.address, latestTime)])
+
+      expect(supplyAt).to.equal(vote1)
+
+      await connectedEscrow.transferFrom(alice.address, alice.address, 1)
+      latestTime = await time.latest()
+
+      const [voteAlice, bias2] = await Promise.all([
+        connectedEscrow.getPastVotes(alice.address, latestTime),
+        connectedEscrow.balanceOfNFT(1),
+      ])
+
+      ownerOf = await votingEscrow.ownerOf(1)
+      expect(ownerOf).to.equal(alice.address)
+      expect(voteAlice).to.equal(bias2)
     })
   })
 })
