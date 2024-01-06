@@ -2,10 +2,10 @@
 
 ## VotingEscrowTestHelper
 
-### votingescrow
+### votingEscrow
 
 ```solidity
-contract VotingEscrow votingescrow
+contract VotingEscrow votingEscrow
 ```
 
 ### constructor
@@ -29,7 +29,7 @@ function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view ret
 Get the current voting power for `_tokenId`
 
 _Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
-     Fetches last user point prior to a certain timestamp, theMAXTIMEforward to timestamp._
+     Fetches last user point prior to the CLOCK_UNIT before the timestamp_
 
 #### Parameters
 

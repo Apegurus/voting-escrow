@@ -18,10 +18,10 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
     using SafeCastLibrary for uint256;
 
     /// @notice Maximum time for a checkpoint
-    int128 public constant MAXTIME = 2 * 365 * 86400;
+    int128 public constant MAX_TIME = 2 * 365 * 86400;
     /// @notice Precision of calculations
     // TODO: This is unused - Revisit need and eventually remove
-    int128 public constant PRECISSION = 1;
+    int128 public constant PRECISION = 1;
     /// @notice Unit of time for the clock
     uint48 public constant CLOCK_UNIT = 7 days;
 
@@ -99,14 +99,14 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
     /**
      * @dev Record global and per-user data to checkpoints. Used by VotingEscrow system.
      * @param _tokenId NFT token ID. No user checkpoint if 0
-     * @param uOladamount Previous locked amount / end lock time for the user
+     * @param uOldAmount Previous locked amount / end lock time for the user
      * @param uNewAmount New locked amount / end lock time for the user
      * @param uOldEndTime New locked amount / end lock time for the user
      * @param uNewEndTime New locked amount / end lock time for the user
      */
     function _checkpoint(
         uint256 _tokenId,
-        int128 uOladamount,
+        int128 uOldAmount,
         int128 uNewAmount,
         uint256 uOldEndTime,
         uint256 uNewEndTime
@@ -122,14 +122,14 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             // Calculate slopes and biases
             // Kept at zero when they have to
             uNewPoint.permanent = uNewEndTime == 0 ? uNewAmount : int128(0);
-            uOldPoint.permanent = uOldEndTime == 0 ? uOladamount : int128(0);
-            if (uOldEndTime > block.timestamp && uOladamount > 0) {
-                uOldPoint.slope = (uOladamount * PRECISSION) / MAXTIME;
-                uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128()) / PRECISSION;
+            uOldPoint.permanent = uOldEndTime == 0 ? uOldAmount : int128(0);
+            if (uOldEndTime > block.timestamp && uOldAmount > 0) {
+                uOldPoint.slope = (uOldAmount * PRECISION) / MAX_TIME;
+                uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128()) / PRECISION;
             }
             if (uNewEndTime > block.timestamp && uNewAmount > 0) {
-                uNewPoint.slope = (uNewAmount * PRECISSION) / MAXTIME;
-                uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / PRECISSION;
+                uNewPoint.slope = (uNewAmount * PRECISION) / MAX_TIME;
+                uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / PRECISION;
             }
             oldDslope = globalSlopeChanges[uOldEndTime];
             if (uNewEndTime != 0) {
@@ -168,12 +168,12 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             (, uint48 delegateTs, address delegateeAddress) = _delegatee[_tokenId].latestCheckpoint();
 
             if (delegateTs != 0) {
-                /// @notice this can likely be handled more efficienttly
+                /// @notice this can likely be handled more efficiently
                 _checkpointDelegatee(delegateeAddress, uOldPoint, uOldEndTime, false);
                 _checkpointDelegatee(delegateeAddress, uNewPoint, uNewEndTime, true);
             }
         }
-
+        /// @dev If tokenId is 0,  this  will still create a global checkpoint
         _globalCheckpoint(_tokenId, uOldPoint, uNewPoint);
     }
 
@@ -210,7 +210,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         {
             // Go over weeks to fill history and calculate what the current point is
             uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
-            uint256 maxTime = testTime + MAXTIME.toUint256();
+            uint256 maxTime = testTime + MAX_TIME.toUint256();
 
             while (testTime != block.timestamp) {
                 testTime += CLOCK_UNIT;
@@ -221,8 +221,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                     dSlope = globalSlopeChanges[testTime];
                 }
                 if (dSlope != 0) {
-                    lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) /
-                        PRECISSION);
+                    lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISION);
                     lastGlobal.slope += dSlope;
                     lastCheckpoint = testTime;
                     _globalCheckpoints.push(lastCheckpoint, lastGlobal);
@@ -234,7 +233,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         if (_tokenId != 0) {
             lastGlobal.bias =
                 lastGlobal.bias -
-                ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()) / PRECISSION);
+                ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()) / PRECISION);
 
             lastGlobal.slope += uNewPoint.slope - uOldPoint.slope;
             lastGlobal.bias += uNewPoint.bias - uOldPoint.bias;
@@ -242,7 +241,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         } else {
             // Initial value of testTime is always larger than the ts of the last point
             uint256 testTime = block.timestamp;
-            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / PRECISSION;
+            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / PRECISION;
         }
 
         _pushStruct(_globalCheckpoints, lastGlobal);
@@ -274,7 +273,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         ].upperLookupRecent(_timestamp);
         if (!exists) return lastPoint;
         uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
-        uint256 maxTime = testTime + MAXTIME.toUint256();
+        uint256 maxTime = testTime + MAX_TIME.toUint256();
         while (testTime != _timestamp) {
             testTime += CLOCK_UNIT;
             int128 dSlope = 0;
@@ -284,13 +283,13 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                 dSlope = delegateeSlopeChanges[_delegateeAddress][testTime];
             }
             if (dSlope != 0) {
-                lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISSION);
+                lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISION);
                 lastPoint.slope += dSlope;
                 lastCheckpointTs = uint48(testTime);
             }
             if (testTime > maxTime) break;
         }
-        int128 change = (lastPoint.slope * uint256(_timestamp - lastCheckpointTs).toInt128()) / PRECISSION;
+        int128 change = (lastPoint.slope * uint256(_timestamp - lastCheckpointTs).toInt128()) / PRECISION;
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
 
         return lastPoint;
@@ -343,14 +342,14 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
     /**
      * @dev Internal function used by `_delegate`
      *      to update delegator voting checkpoints.
-     *      Automatically dedelegates, then updates checkpoint.
+     *      Automatically delegates, then updates checkpoint.
      * @param _delegator The delegator to update checkpoints for
      * @param delegatee The new delegatee for the delegator. Cannot be equal to `_delegator` (use 0 instead).
      * @param endTime The end time of the delegation
      */
     function _checkpointDelegator(uint256 _delegator, address delegatee, uint256 endTime) internal {
         (, uint48 ts, Checkpoints.Point memory lastPoint) = _userCheckpoints[_delegator].latestCheckpoint();
-        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISSION);
+        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISION);
         if (lastPoint.bias < 0) {
             lastPoint.bias = 0;
         }
@@ -367,39 +366,39 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
     /**
      * @dev Internal function to update delegatee's `delegatedBalance` by `balance`.
      *      Only updates if delegating to a new delegatee.
-     * @param deelegateeAddress The address of the delegatee
+     * @param delegateeAddress The address of the delegatee
      * @param userPoint The point of the user
      * @param endTime The end time of the delegation
      * @param _increase Whether to increase or decrease the balance
      */
     function _checkpointDelegatee(
-        address deelegateeAddress,
+        address delegateeAddress,
         Checkpoints.Point memory userPoint,
         uint256 endTime,
         bool _increase
     ) internal {
-        (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) = _baseCheckpointDelegatee(deelegateeAddress);
+        (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) = _baseCheckpointDelegatee(delegateeAddress);
 
         int128 baseBias = lastPoint.bias -
             (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128()) /
-            PRECISSION;
+            PRECISION;
 
         if (!_increase) {
-            delegateeSlopeChanges[deelegateeAddress][endTime] += userPoint.slope;
+            delegateeSlopeChanges[delegateeAddress][endTime] += userPoint.slope;
             lastPoint.bias = userPoint.bias < baseBias ? baseBias - userPoint.bias : int128(0);
             lastPoint.slope = userPoint.slope < lastPoint.slope ? lastPoint.slope - userPoint.slope : int128(0);
             lastPoint.permanent = userPoint.permanent < lastPoint.permanent
                 ? lastPoint.permanent - userPoint.permanent
                 : int128(0);
         } else {
-            delegateeSlopeChanges[deelegateeAddress][endTime] -= userPoint.slope;
+            delegateeSlopeChanges[delegateeAddress][endTime] -= userPoint.slope;
             lastPoint.bias = baseBias + userPoint.bias;
             lastPoint.slope = lastPoint.slope + userPoint.slope;
             lastPoint.permanent = lastPoint.permanent + userPoint.permanent;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
         // if (lastPoint.slope == 0) lastPoint.bias = 0;
-        _pushStruct(_delegateCheckpoints[deelegateeAddress], lastPoint);
+        _pushStruct(_delegateCheckpoints[delegateeAddress], lastPoint);
     }
 
     /**
@@ -419,7 +418,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             // Go over days to fill history and calculate what the current point is
             uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
 
-            uint256 maxTime = testTime + MAXTIME.toUint256();
+            uint256 maxTime = testTime + MAX_TIME.toUint256();
 
             // Iterate over time until current block timestamp or maxtime
             while (testTime != block.timestamp) {
@@ -431,7 +430,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                     dSlope = delegateeSlopeChanges[delegateeAddress][testTime];
                 }
                 if (dSlope != 0) {
-                    lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISSION);
+                    lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISION);
                     lastPoint.slope += dSlope;
                     lastCheckpoint = uint48(testTime);
                     _delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
@@ -485,7 +484,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
             .upperLookupRecent(clockTime);
         if (!exists) return lastGlobal;
         uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
-        uint256 maxTime = testTime + MAXTIME.toUint256();
+        uint256 maxTime = testTime + MAX_TIME.toUint256();
 
         // Iterate over time until the specified timestamp or maxtime is reached
         while (testTime != _timestamp) {
@@ -497,14 +496,14 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
                 dSlope = globalSlopeChanges[testTime];
             }
             if (dSlope != 0) {
-                lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISSION);
+                lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISION);
                 lastGlobal.slope += dSlope;
                 lastCheckpointTs = uint48(testTime);
             }
             if (testTime > maxTime) break;
         }
 
-        int128 change = (lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128()) / PRECISSION;
+        int128 change = (lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128()) / PRECISION;
         lastGlobal.bias = lastGlobal.bias < change ? int128(0) : lastGlobal.bias - change;
 
         return lastGlobal;
@@ -525,7 +524,7 @@ contract CheckPointSystem is ReentrancyGuard, IERC6372 {
         );
         if (!exists) return 0;
         if (lastPoint.permanent != 0) return lastPoint.permanent.toUint256();
-        int128 change = (((lastPoint.slope * uint256(clockTime - ts).toInt128()) / PRECISSION));
+        int128 change = (((lastPoint.slope * uint256(clockTime - ts).toInt128()) / PRECISION));
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
         return lastPoint.bias.toUint256();
     }

@@ -88,7 +88,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
             /// TODO: Where do we normalize this
             unlockTime = toGlobalClock(block.timestamp + duration); // Locktime is rounded down to global clock (days)
             if (unlockTime <= block.timestamp) revert LockDurationNotInFuture();
-            if (unlockTime > block.timestamp + MAXTIME.toUint256()) revert LockDurationTooLong();
+            if (unlockTime > block.timestamp + MAX_TIME.toUint256()) revert LockDurationTooLong();
         }
 
         _mint(to, newTokenId);
@@ -192,7 +192,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
 
     /// @notice Record global and per-user data to checkpoints. Used by VotingEscrow system.
     /// @param _tokenId NFT token ID. No user checkpoint if 0
-    /// @param _oldLocked Pevious locked amount / end lock time for the user
+    /// @param _oldLocked Previous locked amount / end lock time for the user
     /// @param _newLocked New locked amount / end lock time for the user
     function _checkpointLock(
         uint256 _tokenId,
@@ -245,7 +245,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
             // Locktime is rounded down to global clock (days)
             if (oldLocked.endTime <= block.timestamp) revert LockExpired();
             if (unlockTime <= oldLocked.endTime) revert LockDurationNotInFuture();
-            if (unlockTime > block.timestamp + MAXTIME.toUint256()) revert LockDurationTooLong();
+            if (unlockTime > block.timestamp + MAX_TIME.toUint256()) revert LockDurationTooLong();
         }
 
         _updateLock(_tokenId, 0, unlockTime, oldLocked, _permanent);
@@ -265,7 +265,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
         if (!newLocked.isPermanent) revert NotPermanentLock();
 
         // Set the end time to the maximum possible time
-        newLocked.endTime = toGlobalClock(block.timestamp + MAXTIME.toUint256());
+        newLocked.endTime = toGlobalClock(block.timestamp + MAX_TIME.toUint256());
         // Set the lock to not be permanent
         newLocked.isPermanent = false;
 
@@ -443,21 +443,21 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
 
     /**
      * @notice Gets the votes for a delegatee
-     * @param deelegateeAddress The address of the delegatee
+     * @param delegateeAddress The address of the delegatee
      * @return The number of votes the delegatee has
      */
-    function getVotes(address deelegateeAddress) external view returns (uint256) {
-        return _getAdjustedVotes(deelegateeAddress, block.timestamp.toUint48());
+    function getVotes(address delegateeAddress) external view returns (uint256) {
+        return _getAdjustedVotes(delegateeAddress, block.timestamp.toUint48());
     }
 
     /**
      * @notice Gets the past votes for a delegatee at a specific time point
-     * @param _deelegateeAddress The address of the delegatee
+     * @param _delegateeAddress The address of the delegatee
      * @param _timePoint The time point to get the votes at
      * @return The number of votes the delegatee had at the time point
      */
-    function getPastVotes(address _deelegateeAddress, uint256 _timePoint) external view returns (uint256) {
-        return _getAdjustedVotes(_deelegateeAddress, _timePoint.toUint48());
+    function getPastVotes(address _delegateeAddress, uint256 _timePoint) external view returns (uint256) {
+        return _getAdjustedVotes(_delegateeAddress, _timePoint.toUint48());
     }
 
     /**
@@ -492,7 +492,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
 
     /**
      * @notice Gets the delegate of a delegatee
-     * @dev This funtion is marely a placeholder for ERC5801 compatibility
+     * @dev This function is merely a placeholder for ERC5801 compatibility
      *  an account can have multiple delegates in this contract.
      * @param delegatee The delegatee to get the delegate of
      * @return The delegate of the delegatee
@@ -566,7 +566,7 @@ contract VotingEscrow is ERC5725, IVotingEscrow, CheckPointSystem, EIP712 {
     /**
      * @dev See {ERC5725}.
      */
-    function _payoutToken(uint256 tokenId) internal view override returns (address) {
+    function _payoutToken(uint256 /*tokenId*/) internal view override returns (address) {
         return address(token);
     }
 

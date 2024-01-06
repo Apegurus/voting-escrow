@@ -4,18 +4,18 @@
 
 _This contract is used to manage checkpoints in the system._
 
-### MAXTIME
+### MAX_TIME
 
 ```solidity
-int128 MAXTIME
+int128 MAX_TIME
 ```
 
 Maximum time for a checkpoint
 
-### PRECISSION
+### PRECISION
 
 ```solidity
-int128 PRECISSION
+int128 PRECISION
 ```
 
 Precision of calculations
@@ -125,7 +125,7 @@ Machine-readable description of the clock as specified in EIP-6372.
 ### _checkpoint
 
 ```solidity
-function _checkpoint(uint256 _tokenId, int128 uOladamount, int128 uNewAmount, uint256 uOldEndTime, uint256 uNewEndTime) internal
+function _checkpoint(uint256 _tokenId, int128 uOldAmount, int128 uNewAmount, uint256 uOldEndTime, uint256 uNewEndTime) internal
 ```
 
 _Record global and per-user data to checkpoints. Used by VotingEscrow system._
@@ -135,7 +135,7 @@ _Record global and per-user data to checkpoints. Used by VotingEscrow system._
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | _tokenId | uint256 | NFT token ID. No user checkpoint if 0 |
-| uOladamount | int128 | Previous locked amount / end lock time for the user |
+| uOldAmount | int128 | Previous locked amount / end lock time for the user |
 | uNewAmount | int128 | New locked amount / end lock time for the user |
 | uOldEndTime | uint256 | New locked amount / end lock time for the user |
 | uNewEndTime | uint256 | New locked amount / end lock time for the user |
@@ -307,7 +307,7 @@ function _checkpointDelegator(uint256 _delegator, address delegatee, uint256 end
 
 _Internal function used by `_delegate`
      to update delegator voting checkpoints.
-     Automatically dedelegates, then updates checkpoint._
+     Automatically delegates, then updates checkpoint._
 
 #### Parameters
 
@@ -320,7 +320,7 @@ _Internal function used by `_delegate`
 ### _checkpointDelegatee
 
 ```solidity
-function _checkpointDelegatee(address deelegateeAddress, struct Checkpoints.Point userPoint, uint256 endTime, bool _increase) internal
+function _checkpointDelegatee(address delegateeAddress, struct Checkpoints.Point userPoint, uint256 endTime, bool _increase) internal
 ```
 
 _Internal function to update delegatee's `delegatedBalance` by `balance`.
@@ -330,7 +330,7 @@ _Internal function to update delegatee's `delegatedBalance` by `balance`.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| deelegateeAddress | address | The address of the delegatee |
+| delegateeAddress | address | The address of the delegatee |
 | userPoint | struct Checkpoints.Point | The point of the user |
 | endTime | uint256 | The end time of the delegation |
 | _increase | bool | Whether to increase or decrease the balance |

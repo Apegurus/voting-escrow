@@ -4,7 +4,7 @@ import { time, loadFixture, mine } from '@nomicfoundation/hardhat-network-helper
 import { expect } from 'chai'
 import '@nomicfoundation/hardhat-chai-matchers'
 
-import { deployVotingEscrowFicture } from './fixtures/deployVotingEscrow'
+import { deployVotingEscrowFixture } from './fixtures/deployVotingEscrow'
 import { isWithinLimit } from './utils'
 import { VotingEscrow, VotingEscrowTestHelper } from '../typechain-types'
 import { BigNumber } from 'ethers'
@@ -25,7 +25,7 @@ import { token } from '../typechain-types/@openzeppelin/contracts'
 async function fixture() {
   // Contracts are deployed using the first signer/account by default
   const accounts = await ethers.getSigners()
-  const deployment = await deployVotingEscrowFicture(ethers)
+  const deployment = await deployVotingEscrowFixture(ethers)
   return { ...deployment, accounts }
 }
 

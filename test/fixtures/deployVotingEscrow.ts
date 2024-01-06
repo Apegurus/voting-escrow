@@ -1,7 +1,7 @@
 import { time } from '@nomicfoundation/hardhat-network-helpers'
 import { ethers } from 'hardhat'
 
-export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
+export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
   const [owner, alice, bob, calvin] = await _ethers.getSigners()
 
   const ERC20Mock = await _ethers.getContractFactory('ERC20Mock')
@@ -28,7 +28,7 @@ export async function deployVotingEscrowFicture(_ethers: typeof ethers) {
   const duration = ONE_YEAR_IN_SECS
   const lockedAmount = ONE_GWEI
   const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS
-  const maxTime = await votingEscrow.MAXTIME()
+  const maxTime = await votingEscrow.MAX_TIME()
   const clockUnit = await votingEscrow.CLOCK_UNIT()
 
   return {

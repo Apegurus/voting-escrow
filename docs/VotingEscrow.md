@@ -186,7 +186,7 @@ Record global and per-user data to checkpoints. Used by VotingEscrow system.
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | _tokenId | uint256 | NFT token ID. No user checkpoint if 0 |
-| _oldLocked | struct IVotingEscrow.LockDetails | Pevious locked amount / end lock time for the user |
+| _oldLocked | struct IVotingEscrow.LockDetails | Previous locked amount / end lock time for the user |
 | _newLocked | struct IVotingEscrow.LockDetails | New locked amount / end lock time for the user |
 
 ### delegate
@@ -333,7 +333,7 @@ _See {IERC721Enumerable-totalSupply}._
 ### getVotes
 
 ```solidity
-function getVotes(address deelegateeAddress) external view returns (uint256)
+function getVotes(address delegateeAddress) external view returns (uint256)
 ```
 
 Gets the votes for a delegatee
@@ -342,7 +342,7 @@ Gets the votes for a delegatee
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| deelegateeAddress | address | The address of the delegatee |
+| delegateeAddress | address | The address of the delegatee |
 
 #### Return Values
 
@@ -353,7 +353,7 @@ Gets the votes for a delegatee
 ### getPastVotes
 
 ```solidity
-function getPastVotes(address _deelegateeAddress, uint256 _timePoint) external view returns (uint256)
+function getPastVotes(address _delegateeAddress, uint256 _timePoint) external view returns (uint256)
 ```
 
 Gets the past votes for a delegatee at a specific time point
@@ -362,7 +362,7 @@ Gets the past votes for a delegatee at a specific time point
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _deelegateeAddress | address | The address of the delegatee |
+| _delegateeAddress | address | The address of the delegatee |
 | _timePoint | uint256 | The time point to get the votes at |
 
 #### Return Values
@@ -428,7 +428,7 @@ function delegates(address delegatee) external view returns (address)
 
 Gets the delegate of a delegatee
 
-_This funtion is marely a placeholder for ERC5801 compatibility
+_This function is merely a placeholder for ERC5801 compatibility
  an account can have multiple delegates in this contract._
 
 #### Parameters
@@ -493,7 +493,7 @@ _See {ERC5725}._
 ### _payoutToken
 
 ```solidity
-function _payoutToken(uint256 tokenId) internal view returns (address)
+function _payoutToken(uint256) internal view returns (address)
 ```
 
 _See {ERC5725}._
