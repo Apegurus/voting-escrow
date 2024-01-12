@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {CheckpointSystemLib} from "./CheckpointSystem.sol";
+import {EscrowDelegateCheckpoints} from "./EscrowDelegateCheckpoints.sol";
 
 /**
- * @title CheckpointSystemStorage
+ * @title EscrowDelegateStorage
  * @dev This contract serves as the storage for checkpoints in the system.
  */
-contract CheckpointSystemStorage {
-    using CheckpointSystemLib for CheckpointSystemLib.CheckpointSystemStorage;
+contract EscrowDelegateStorage {
+    using EscrowDelegateCheckpoints for EscrowDelegateCheckpoints.EscrowDelegateStore;
 
     /// @notice Storage struct for the checkpoint system
-    CheckpointSystemLib.CheckpointSystemStorage internal csStorage;
+    EscrowDelegateCheckpoints.EscrowDelegateStore internal edStore;
 
-    uint256 MAX_TIME = uint256(uint128(CheckpointSystemLib.MAX_TIME));
+    uint256 MAX_TIME = uint256(uint128(EscrowDelegateCheckpoints.MAX_TIME));
 
     /// @notice Gap for future upgrades
     uint256[50] private __gap;
@@ -23,11 +23,11 @@ contract CheckpointSystemStorage {
     /// -----------------------------------------------------------------------
 
     function globalSlopeChanges(uint256 _timestamp) external view returns (int128) {
-        return csStorage.globalSlopeChanges[_timestamp];
+        return edStore.globalSlopeChanges[_timestamp];
     }
 
     function delegateeSlopeChanges(address _delegatee, uint256 _timestamp) external view returns (int128) {
-        return csStorage.delegateeSlopeChanges[_delegatee][_timestamp];
+        return edStore.delegateeSlopeChanges[_delegatee][_timestamp];
     }
 
     /// -----------------------------------------------------------------------
@@ -35,6 +35,6 @@ contract CheckpointSystemStorage {
     /// -----------------------------------------------------------------------
 
     function toGlobalClock(uint256 _timestamp) public pure virtual returns (uint48) {
-        return CheckpointSystemLib.toGlobalClock(_timestamp);
+        return EscrowDelegateCheckpoints.toGlobalClock(_timestamp);
     }
 }

@@ -5,14 +5,11 @@ import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
 
-// TODO: Rename to VotingEscrowCheckpointsLib
-// library EscrowDelegateCheckpointsLib {
-
 /**
  * @title CheckPointSystem
  * @dev This contract is used to manage checkpoints in the system.
  */
-library CheckpointSystemLib {
+library EscrowDelegateCheckpoints {
     using Checkpoints for Checkpoints.Trace;
     using Checkpoints for Checkpoints.TraceAddress;
     using SafeCastLibrary for int128;
@@ -26,7 +23,7 @@ library CheckpointSystemLib {
     /// @notice Unit of time for the clock
     uint48 public constant CLOCK_UNIT = 7 days;
 
-    struct CheckpointSystemStorage {
+    struct EscrowDelegateStore {
         /// @notice Global checkpoints
         Checkpoints.Trace _globalCheckpoints;
         /// @notice Mapping of global slope changes
@@ -70,7 +67,7 @@ library CheckpointSystemLib {
 
     /**
      * @dev Record global and per-escrow data to checkpoints. Used by VotingEscrow system.
-     * @param storage_ The CheckpointSystemStorage struct containing all the storage mappings.
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings.
      * @param _escrowId NFT escrow lock ID. No escrow checkpoint if 0
      * @param uOldAmount Locked amount from last checkpoint
      * @param uNewAmount Locked amount from current checkpoint
@@ -78,7 +75,7 @@ library CheckpointSystemLib {
      * @param uNewEndTime Current checkpoint time
      */
     function checkpoint(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 _escrowId,
         int128 uOldAmount,
         int128 uNewAmount,
@@ -106,12 +103,12 @@ library CheckpointSystemLib {
                 uNewPoint.slope = (uNewAmount * PRECISION) / MAX_TIME;
                 uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / PRECISION;
             }
-            oldDslope = storage_.globalSlopeChanges[uOldEndTime];
+            oldDslope = store_.globalSlopeChanges[uOldEndTime];
             if (uNewEndTime != 0) {
                 if (uNewEndTime == uOldEndTime) {
                     newDslope = oldDslope;
                 } else {
-                    newDslope = storage_.globalSlopeChanges[uNewEndTime];
+                    newDslope = store_.globalSlopeChanges[uNewEndTime];
                 }
             }
 
@@ -124,34 +121,34 @@ library CheckpointSystemLib {
                 if (uOldEndTime == uNewEndTime) {
                     oldDslope -= uNewPoint.slope; // It was a new deposit, not extension
                 }
-                storage_.globalSlopeChanges[uOldEndTime] = oldDslope;
+                store_.globalSlopeChanges[uOldEndTime] = oldDslope;
             }
 
             if (uNewEndTime > block.timestamp) {
                 // update slope if new lock is greater than old lock and is not permanent or if old lock is permanent
                 if ((uNewEndTime > uOldEndTime)) {
                     newDslope -= uNewPoint.slope; // old slope disappeared at this point
-                    storage_.globalSlopeChanges[uNewEndTime] = newDslope;
+                    store_.globalSlopeChanges[uNewEndTime] = newDslope;
                     // console.log("Pushed slope: %s to change: %s", uNewEndTime);
                     // console.logInt(newDslope);
                 }
                 // else: we recorded it already in oldDslope
             }
 
-            escrowCheckpoint(storage_, _escrowId, uNewPoint);
+            escrowCheckpoint(store_, _escrowId, uNewPoint);
 
-            (, uint48 delegateTs, address delegateeAddress) = storage_
+            (, uint48 delegateTs, address delegateeAddress) = store_
                 ._escrowDelegateeAddress[_escrowId]
                 .latestCheckpoint();
 
             if (delegateTs != 0) {
                 /// @notice this can likely be handled more efficiently
-                checkpointDelegatee(storage_, delegateeAddress, uOldPoint, uOldEndTime, false);
-                checkpointDelegatee(storage_, delegateeAddress, uNewPoint, uNewEndTime, true);
+                checkpointDelegatee(store_, delegateeAddress, uOldPoint, uOldEndTime, false);
+                checkpointDelegatee(store_, delegateeAddress, uNewPoint, uNewEndTime, true);
             }
         }
         /// @dev If escrowId is 0,  this  will still create a global checkpoint
-        globalCheckpoint(storage_, _escrowId, uOldPoint, uNewPoint);
+        globalCheckpoint(store_, _escrowId, uOldPoint, uNewPoint);
     }
 
     /**
@@ -160,18 +157,18 @@ library CheckpointSystemLib {
      * @param uNewPoint The new point to be updated
      */
     function escrowCheckpoint(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 _escrowId,
         Checkpoints.Point memory uNewPoint
     ) public {
-        _pushStruct(storage_._lockCheckpoints[_escrowId], uNewPoint);
+        _pushStruct(store_._lockCheckpoints[_escrowId], uNewPoint);
     }
 
     /**
      * @dev Internal function to update global checkpoint
      */
-    function globalCheckpoint(CheckpointSystemStorage storage storage_) internal {
-        globalCheckpoint(storage_, 0, Checkpoints.blankPoint(), Checkpoints.blankPoint());
+    function globalCheckpoint(EscrowDelegateStore storage store_) internal {
+        globalCheckpoint(store_, 0, Checkpoints.blankPoint(), Checkpoints.blankPoint());
     }
 
     /**
@@ -181,12 +178,12 @@ library CheckpointSystemLib {
      * @param uNewPoint The new point to be updated
      */
     function globalCheckpoint(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 _escrowId,
         Checkpoints.Point memory uOldPoint,
         Checkpoints.Point memory uNewPoint
     ) public {
-        (, uint48 lastPoint, Checkpoints.Point memory lastGlobal) = storage_._globalCheckpoints.latestCheckpoint();
+        (, uint48 lastPoint, Checkpoints.Point memory lastGlobal) = store_._globalCheckpoints.latestCheckpoint();
         uint48 lastCheckpoint = lastPoint != 0 ? lastPoint : uint48(block.timestamp);
 
         {
@@ -200,13 +197,13 @@ library CheckpointSystemLib {
                 if (testTime > block.timestamp) {
                     testTime = block.timestamp.toUint48();
                 } else {
-                    dSlope = storage_.globalSlopeChanges[testTime];
+                    dSlope = store_.globalSlopeChanges[testTime];
                 }
                 if (dSlope != 0) {
                     lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISION);
                     lastGlobal.slope += dSlope;
                     lastCheckpoint = testTime;
-                    storage_._globalCheckpoints.push(lastCheckpoint, lastGlobal);
+                    store_._globalCheckpoints.push(lastCheckpoint, lastGlobal);
                 }
                 if (testTime > maxTime) break;
             }
@@ -226,7 +223,7 @@ library CheckpointSystemLib {
             lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / PRECISION;
         }
 
-        _pushStruct(storage_._globalCheckpoints, lastGlobal);
+        _pushStruct(store_._globalCheckpoints, lastGlobal);
     }
 
     /**
@@ -236,11 +233,11 @@ library CheckpointSystemLib {
      * @return Total voting power at that time
      */
     function getAdjustedVotes(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         address _delegateeAddress,
         uint48 _timestamp
     ) external view returns (uint256) {
-        Checkpoints.Point memory lastPoint = getAdjustedVotesCheckpoint(storage_, _delegateeAddress, _timestamp);
+        Checkpoints.Point memory lastPoint = getAdjustedVotesCheckpoint(store_, _delegateeAddress, _timestamp);
         return (lastPoint.bias + lastPoint.permanent).toUint256();
     }
 
@@ -251,11 +248,11 @@ library CheckpointSystemLib {
      * @return Total voting power at that time
      */
     function getAdjustedVotesCheckpoint(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         address _delegateeAddress,
         uint48 _timestamp
     ) public view returns (Checkpoints.Point memory) {
-        (bool exists, uint48 lastCheckpointTs, Checkpoints.Point memory lastPoint) = storage_
+        (bool exists, uint48 lastCheckpointTs, Checkpoints.Point memory lastPoint) = store_
             ._delegateCheckpoints[_delegateeAddress]
             .upperLookupRecent(_timestamp);
         if (!exists) return lastPoint;
@@ -267,7 +264,7 @@ library CheckpointSystemLib {
             if (testTime > _timestamp) {
                 testTime = _timestamp;
             } else {
-                dSlope = storage_.delegateeSlopeChanges[_delegateeAddress][testTime];
+                dSlope = store_.delegateeSlopeChanges[_delegateeAddress][testTime];
             }
             if (dSlope != 0) {
                 lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISION);
@@ -288,11 +285,8 @@ library CheckpointSystemLib {
      * @return The address of the delegate
      */
     // TODO: Create a delegates function which uses this in VotingEscrow
-    function getEscrowDelegatee(
-        CheckpointSystemStorage storage storage_,
-        uint256 escrowId
-    ) external view returns (address) {
-        return getEscrowDelegateeAtTime(storage_, escrowId, block.timestamp.toUint48());
+    function getEscrowDelegatee(EscrowDelegateStore storage store_, uint256 escrowId) external view returns (address) {
+        return getEscrowDelegateeAtTime(store_, escrowId, block.timestamp.toUint48());
     }
 
     /**
@@ -302,11 +296,11 @@ library CheckpointSystemLib {
      * @return The address of the delegate
      */
     function getEscrowDelegateeAtTime(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 escrowId,
         uint48 timestamp
     ) public view returns (address) {
-        return storage_._escrowDelegateeAddress[escrowId].upperLookupRecent(timestamp);
+        return store_._escrowDelegateeAddress[escrowId].upperLookupRecent(timestamp);
     }
 
     /**
@@ -316,15 +310,15 @@ library CheckpointSystemLib {
      * @param endTime The end time of the delegation
      */
     function delegate(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 escrowId,
         address delegatee,
         uint256 endTime
     ) external {
-        address currentDelegate = storage_._escrowDelegateeAddress[escrowId].latest();
+        address currentDelegate = store_._escrowDelegateeAddress[escrowId].latest();
         if (currentDelegate == delegatee) return;
 
-        checkpointDelegator(storage_, escrowId, delegatee, endTime);
+        checkpointDelegator(store_, escrowId, delegatee, endTime);
         // TODO: commented event
         // emit DelegateChanged(_msgSender(), currentDelegate, delegatee);
     }
@@ -338,24 +332,24 @@ library CheckpointSystemLib {
      * @param endTime The end time of the delegation
      */
     function checkpointDelegator(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 escrowId,
         address delegatee,
         uint256 endTime
     ) public {
-        (, uint48 ts, Checkpoints.Point memory lastPoint) = storage_._lockCheckpoints[escrowId].latestCheckpoint();
+        (, uint48 ts, Checkpoints.Point memory lastPoint) = store_._lockCheckpoints[escrowId].latestCheckpoint();
         lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISION);
         if (lastPoint.bias < 0) {
             lastPoint.bias = 0;
         }
 
         // Dedelegate from delegatee if delegated
-        address oldDelegatee = storage_._escrowDelegateeAddress[escrowId].latest();
+        address oldDelegatee = store_._escrowDelegateeAddress[escrowId].latest();
         if (oldDelegatee != delegatee && oldDelegatee != address(0))
-            checkpointDelegatee(storage_, oldDelegatee, lastPoint, endTime, false);
+            checkpointDelegatee(store_, oldDelegatee, lastPoint, endTime, false);
         // Delegate to new delegator
-        if (endTime > block.timestamp) checkpointDelegatee(storage_, delegatee, lastPoint, endTime, true);
-        _pushAddress(storage_._escrowDelegateeAddress[escrowId], delegatee);
+        if (endTime > block.timestamp) checkpointDelegatee(store_, delegatee, lastPoint, endTime, true);
+        _pushAddress(store_._escrowDelegateeAddress[escrowId], delegatee);
     }
 
     /**
@@ -367,37 +361,34 @@ library CheckpointSystemLib {
      * @param _increase Whether to increase or decrease the balance
      */
     function checkpointDelegatee(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         address delegateeAddress,
         Checkpoints.Point memory escrowPoint,
         uint256 endTime,
         bool _increase
     ) public {
-        (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) = baseCheckpointDelegatee(
-            storage_,
-            delegateeAddress
-        );
+        (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) = baseCheckpointDelegatee(store_, delegateeAddress);
 
         int128 baseBias = lastPoint.bias -
             (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128()) /
             PRECISION;
 
         if (!_increase) {
-            storage_.delegateeSlopeChanges[delegateeAddress][endTime] += escrowPoint.slope;
+            store_.delegateeSlopeChanges[delegateeAddress][endTime] += escrowPoint.slope;
             lastPoint.bias = escrowPoint.bias < baseBias ? baseBias - escrowPoint.bias : int128(0);
             lastPoint.slope = escrowPoint.slope < lastPoint.slope ? lastPoint.slope - escrowPoint.slope : int128(0);
             lastPoint.permanent = escrowPoint.permanent < lastPoint.permanent
                 ? lastPoint.permanent - escrowPoint.permanent
                 : int128(0);
         } else {
-            storage_.delegateeSlopeChanges[delegateeAddress][endTime] -= escrowPoint.slope;
+            store_.delegateeSlopeChanges[delegateeAddress][endTime] -= escrowPoint.slope;
             lastPoint.bias = baseBias + escrowPoint.bias;
             lastPoint.slope = lastPoint.slope + escrowPoint.slope;
             lastPoint.permanent = lastPoint.permanent + escrowPoint.permanent;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
         // if (lastPoint.slope == 0) lastPoint.bias = 0;
-        _pushStruct(storage_._delegateCheckpoints[delegateeAddress], lastPoint);
+        _pushStruct(store_._delegateCheckpoints[delegateeAddress], lastPoint);
     }
 
     /**
@@ -407,10 +398,10 @@ library CheckpointSystemLib {
      * @return lastCheckpoint The last checkpoint time of the delegatee
      */
     function baseCheckpointDelegatee(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         address delegateeAddress
     ) public returns (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) {
-        (bool exists, uint48 ts, Checkpoints.Point memory point) = storage_
+        (bool exists, uint48 ts, Checkpoints.Point memory point) = store_
             ._delegateCheckpoints[delegateeAddress]
             .latestCheckpoint();
         lastPoint = point;
@@ -428,13 +419,13 @@ library CheckpointSystemLib {
                 if (testTime > block.timestamp) {
                     testTime = uint48(block.timestamp);
                 } else {
-                    dSlope = storage_.delegateeSlopeChanges[delegateeAddress][testTime];
+                    dSlope = store_.delegateeSlopeChanges[delegateeAddress][testTime];
                 }
                 if (dSlope != 0) {
                     lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISION);
                     lastPoint.slope += dSlope;
                     lastCheckpoint = uint48(testTime);
-                    storage_._delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
+                    store_._delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
                 }
                 if (testTime > maxTime) break;
             }
@@ -447,10 +438,10 @@ library CheckpointSystemLib {
      * @return Total voting power at that time
      */
     function getAdjustedGlobalVotes(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint48 _timestamp
     ) external view returns (uint256) {
-        Checkpoints.Point memory lastPoint = getAdjustedCheckpoint(storage_, _timestamp);
+        Checkpoints.Point memory lastPoint = getAdjustedCheckpoint(store_, _timestamp);
         return (lastPoint.bias + lastPoint.permanent).toUint256();
     }
 
@@ -460,11 +451,11 @@ library CheckpointSystemLib {
      * @return Total voting power at that time
      */
     function getAdjustedCheckpoint(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint48 _timestamp
     ) public view returns (Checkpoints.Point memory) {
         uint48 clockTime = _timestamp;
-        (bool exists, uint48 lastCheckpointTs, Checkpoints.Point memory lastGlobal) = storage_
+        (bool exists, uint48 lastCheckpointTs, Checkpoints.Point memory lastGlobal) = store_
             ._globalCheckpoints
             .upperLookupRecent(clockTime);
         if (!exists) return lastGlobal;
@@ -478,7 +469,7 @@ library CheckpointSystemLib {
             if (testTime > _timestamp) {
                 testTime = _timestamp;
             } else {
-                dSlope = storage_.globalSlopeChanges[testTime];
+                dSlope = store_.globalSlopeChanges[testTime];
             }
             if (dSlope != 0) {
                 lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISION);
@@ -503,12 +494,12 @@ library CheckpointSystemLib {
      * @return NFT bias
      */
     function getAdjustedNftBias(
-        CheckpointSystemStorage storage storage_,
+        EscrowDelegateStore storage store_,
         uint256 _escrowId,
         uint256 _timestamp
     ) external view returns (uint256) {
         uint48 clockTime = _timestamp.toUint48();
-        (bool exists, uint48 ts, Checkpoints.Point memory lastPoint) = storage_
+        (bool exists, uint48 ts, Checkpoints.Point memory lastPoint) = store_
             ._lockCheckpoints[_escrowId]
             .upperLookupRecent(clockTime);
         if (!exists) return 0;

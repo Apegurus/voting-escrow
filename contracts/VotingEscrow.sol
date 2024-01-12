@@ -14,9 +14,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC5725} from "./erc5725/ERC5725.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
-
-import {CheckpointSystemLib} from "./systems/CheckpointSystem.sol";
-import {CheckpointSystemStorage} from "./systems/CheckpointSystemStorage.sol";
+import {EscrowDelegateCheckpoints} from "./systems/EscrowDelegateCheckpoints.sol";
+import {EscrowDelegateStorage} from "./systems/EscrowDelegateStorage.sol";
 
 /**
  * @title VotingEscrow
@@ -26,11 +25,11 @@ import {CheckpointSystemStorage} from "./systems/CheckpointSystemStorage.sol";
  * - On transfers, delegation is reset. (See _update)
  * -
  */
-contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVotingEscrow, EIP712 {
+contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotingEscrow, EIP712 {
     using SafeERC20 for IERC20;
     using SafeCastLibrary for uint256;
     using SafeCastLibrary for int128;
-    using CheckpointSystemLib for CheckpointSystemLib.CheckpointSystemStorage;
+    using EscrowDelegateCheckpoints for EscrowDelegateCheckpoints.EscrowDelegateStore;
 
     /// @notice The token being locked
     IERC20 public token;
@@ -62,7 +61,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         address previousOwner = super._update(to, tokenId, auth);
         // NOTE: Resets the delegation on transfer
-        if (to != previousOwner) csStorage.delegate(tokenId, to, lockDetails[tokenId].endTime);
+        if (to != previousOwner) edStore.delegate(tokenId, to, lockDetails[tokenId].endTime);
 
         return previousOwner;
     }
@@ -105,7 +104,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
         _mint(to, newTokenId);
         lockDetails[newTokenId].startTime = block.timestamp;
         _updateLock(newTokenId, value, unlockTime, lockDetails[newTokenId], permanent);
-        csStorage.delegate(newTokenId, delegatee, unlockTime);
+        edStore.delegate(newTokenId, delegatee, unlockTime);
         emit LockCreated(newTokenId, delegatee, value, unlockTime, permanent);
         return newTokenId;
     }
@@ -161,7 +160,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      * @notice Updates the global checkpoint
      */
     function globalCheckpoint() external nonReentrant {
-        return csStorage.globalCheckpoint();
+        return edStore.globalCheckpoint();
     }
 
     /**
@@ -169,7 +168,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      * @param _delegateeAddress The address of the delegatee
      */
     function checkpointDelegatee(address _delegateeAddress) external nonReentrant {
-        csStorage.baseCheckpointDelegatee(_delegateeAddress);
+        edStore.baseCheckpointDelegatee(_delegateeAddress);
     }
 
     /// @notice Deposit & update lock tokens for a user
@@ -232,7 +231,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
         IVotingEscrow.LockDetails memory _oldLocked,
         IVotingEscrow.LockDetails memory _newLocked
     ) internal {
-        csStorage.checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
+        edStore.checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
     }
 
     /**
@@ -242,7 +241,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      */
     function delegate(uint256 delegator, address delegatee) external {
         // TODO: Can only delegate if approved or owner
-        csStorage.delegate(delegator, delegatee, lockDetails[delegator].endTime);
+        edStore.delegate(delegator, delegatee, lockDetails[delegator].endTime);
     }
 
     /// @notice Deposit `_value` tokens for `_tokenId` and add to the lock
@@ -460,15 +459,15 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
     function balanceOfNFT(uint256 _tokenId) public view returns (uint256) {
         // TODO: return or remove?
         // if (ownershipChange[_tokenId] == block.number) return 0;
-        return csStorage.getAdjustedNftBias(_tokenId, block.timestamp);
+        return edStore.getAdjustedNftBias(_tokenId, block.timestamp);
     }
 
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256) {
-        return csStorage.getAdjustedNftBias(_tokenId, _timestamp);
+        return edStore.getAdjustedNftBias(_tokenId, _timestamp);
     }
 
     function totalSupply() public view override returns (uint256) {
-        return csStorage.getAdjustedGlobalVotes(block.timestamp.toUint48());
+        return edStore.getAdjustedGlobalVotes(block.timestamp.toUint48());
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -481,7 +480,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      * @return The number of votes the delegatee has
      */
     function getVotes(address delegateeAddress) external view returns (uint256) {
-        return csStorage.getAdjustedVotes(delegateeAddress, block.timestamp.toUint48());
+        return edStore.getAdjustedVotes(delegateeAddress, block.timestamp.toUint48());
     }
 
     /**
@@ -491,7 +490,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      * @return The number of votes the delegatee had at the time point
      */
     function getPastVotes(address _delegateeAddress, uint256 _timePoint) external view returns (uint256) {
-        return csStorage.getAdjustedVotes(_delegateeAddress, _timePoint.toUint48());
+        return edStore.getAdjustedVotes(_delegateeAddress, _timePoint.toUint48());
     }
 
     /**
@@ -500,7 +499,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      * @return The total supply at the time point
      */
     function getPastTotalSupply(uint256 _timePoint) external view override returns (uint256) {
-        return csStorage.getAdjustedGlobalVotes(_timePoint.toUint48());
+        return edStore.getAdjustedGlobalVotes(_timePoint.toUint48());
     }
 
     /**
@@ -522,7 +521,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
         uint256 balance = balanceOf(delegator);
         for (uint256 i = 0; i < balance; i++) {
             uint256 tokenId = tokenOfOwnerByIndex(delegator, i);
-            csStorage.delegate(tokenId, delegatee, lockDetails[tokenId].endTime);
+            edStore.delegate(tokenId, delegatee, lockDetails[tokenId].endTime);
         }
     }
 
@@ -533,7 +532,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
      * @return The address of the delegate
      */
     function getEscrowDelegateeAtTime(uint256 tokenId, uint48 timestamp) external view returns (address) {
-        return csStorage.getEscrowDelegateeAtTime(tokenId, timestamp);
+        return edStore.getEscrowDelegateeAtTime(tokenId, timestamp);
     }
 
     /**
@@ -547,7 +546,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
         // FIXME: delegates is not fully implemented
         // TODO: A single address can be delegated to from multiple escrow locks
         uint256 tokenId = tokenOfOwnerByIndex(delegatee, 0);
-        return csStorage.getEscrowDelegatee(tokenId);
+        return edStore.getEscrowDelegatee(tokenId);
     }
 
     /**
@@ -560,7 +559,7 @@ contract VotingEscrow is CheckpointSystemStorage, ERC5725, ReentrancyGuard, IVot
         address[] memory allDelegates = new address[](balance);
         for (uint256 i = 0; i < balance; i++) {
             uint256 tokenId = tokenOfOwnerByIndex(owner, i);
-            allDelegates[i] = csStorage.getEscrowDelegatee(tokenId);
+            allDelegates[i] = edStore.getEscrowDelegatee(tokenId);
         }
         return allDelegates;
     }

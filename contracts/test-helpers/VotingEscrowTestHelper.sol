@@ -2,9 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {VotingEscrow} from "../VotingEscrow.sol";
-// FIXME: cc
-// import {CheckpointSystemLib} from "../systems/CheckpointSystemLib.sol";
-import {CheckpointSystemLib} from "../systems/CheckpointSystem.sol";
+import {EscrowDelegateCheckpoints} from "../systems/EscrowDelegateCheckpoints.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 
 contract VotingEscrowTestHelper {
@@ -40,7 +38,7 @@ contract VotingEscrowTestHelper {
         if (isPermanent) return amount;
         if (startTime > _timestamp) return 0;
         if (endTime < _timestamp) return 0;
-        int128 slope = (amount * CheckpointSystemLib.PRECISION) / CheckpointSystemLib.MAX_TIME;
-        balance = (slope * (endTime - _timestamp).toInt128()) / CheckpointSystemLib.PRECISION;
+        int128 slope = (amount * EscrowDelegateCheckpoints.PRECISION) / EscrowDelegateCheckpoints.MAX_TIME;
+        balance = (slope * (endTime - _timestamp).toInt128()) / EscrowDelegateCheckpoints.PRECISION;
     }
 }
