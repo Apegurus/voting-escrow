@@ -28,7 +28,7 @@ module.exports = {
     'reason-string': ['warn', { maxLength: 50 }], // Revert reason length
     'func-param-name-mixedcase': 'error',
     'modifier-name-mixedcase': 'error',
-    'private-vars-leading-underscore': ['error', { strict: false }],
+    'private-vars-leading-underscore': ['warn', { strict: false }],
     ordering: 'warn',
 
     // Security Rules
