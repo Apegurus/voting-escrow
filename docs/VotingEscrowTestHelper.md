@@ -17,7 +17,7 @@ constructor(address _votingEscrow) public
 ### createManyLocks
 
 ```solidity
-function createManyLocks(int128[] _value, uint256[] _lockDuration, address[] _to, bool[] _permanent) public
+function createManyLocks(int128[] _value, uint256[] _lockDuration, address[] _to, address[] _delegtatee, bool[] _permanent) public
 ```
 
 ### balanceOfLockAt
