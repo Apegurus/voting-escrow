@@ -54,7 +54,7 @@ async function validateState(
     biasPromises.push(votingEscrow.balanceOfNFTAt(token.tokenId, testTime))
     locksPromises.push(votingEscrowTestHelper.balanceOfLockAt(token.tokenId, testTime))
     detailsPromises.push(votingEscrow.lockDetails(token.tokenId))
-    delegatesPromises.push(votingEscrow['delegates(uint256,uint48)'](token.tokenId, testTime))
+    delegatesPromises.push(votingEscrow.getEscrowDelegateeAtTime(token.tokenId, testTime))
     if (!votesAccounts[token.account.address] && votesAccounts[token.account.address] !== 0) {
       votesPromises.push(votingEscrow.getPastVotes(token.account.address, testTime))
       votesAccounts[token.account.address] = votesPromises.length - 1
@@ -740,6 +740,7 @@ describe('VotingEscrow', function () {
         const connectedEscrow = votingEscrow.connect(alice)
 
         const oneDay = 24 * 60 * 60
+        // const sevenDays = 7 * oneDay
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
@@ -1030,7 +1031,7 @@ describe('VotingEscrow', function () {
       let latestTime = await time.latest()
       await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
 
-      const aliceDelegates = await connectedEscrow.accountDelegates(alice.address)
+      const aliceDelegates = await connectedEscrow.getAccountDelegates(alice.address)
       console.log(aliceDelegates)
       aliceDelegates.forEach((delegate) => {
         expect(delegate).to.equal(alice.address)

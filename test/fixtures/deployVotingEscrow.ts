@@ -7,7 +7,14 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
   const ERC20Mock = await _ethers.getContractFactory('ERC20Mock')
   const mockToken = await ERC20Mock.deploy('100000000000000000000000000000000000', 18, 'ERC20Mock', 'MOCK')
 
-  const VotingEscrow = await _ethers.getContractFactory('VotingEscrow')
+  const CheckpointSystemLib = await _ethers.getContractFactory('CheckpointSystemLib')
+  const checkpointSystemLib = await CheckpointSystemLib.deploy()
+
+  const VotingEscrow = await _ethers.getContractFactory('VotingEscrow', {
+    libraries: {
+      CheckpointSystemLib: checkpointSystemLib.address,
+    },
+  })
   const votingEscrow = await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)
 
   const VotingEscrowTestHelper = await _ethers.getContractFactory('VotingEscrowTestHelper')
@@ -28,8 +35,9 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
   const duration = ONE_YEAR_IN_SECS
   const lockedAmount = ONE_GWEI
   const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS
-  const maxTime = await votingEscrow.MAX_TIME()
-  const clockUnit = await votingEscrow.CLOCK_UNIT()
+
+  const maxTime = await checkpointSystemLib.MAX_TIME()
+  const clockUnit = await checkpointSystemLib.CLOCK_UNIT()
 
   return {
     mockToken,

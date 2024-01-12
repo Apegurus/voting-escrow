@@ -10,6 +10,34 @@ interface IVotingEscrow is IERC5805 {
         bool isPermanent; /// @dev if its a permanent lock
     }
 
+    /// -----------------------------------------------------------------------
+    /// Events
+    /// -----------------------------------------------------------------------
+
+    /// @notice Lock events
+    event LockCreated(uint256 indexed tokenId, address indexed to, int128 value, uint256 unlockTime, bool isPermanent);
+    event LockUpdated(uint256 indexed tokenId, int128 value, uint256 unlockTime, bool isPermanent);
+    event LockMerged(
+        uint256 indexed fromTokenId,
+        uint256 indexed toTokenId,
+        uint256 totalValue,
+        uint256 unlockTime,
+        bool isPermanent
+    );
+    event LockSplit(uint256[] splitWeights, uint256 indexed _tokenId);
+    event LockDurationExtended(uint256 indexed tokenId, uint256 newUnlockTime);
+    event LockAmountIncreased(uint256 indexed tokenId, uint256 value);
+    event UnlockPermanent(uint256 indexed tokenId, address indexed sender, uint256 unlockTime);
+    /// @notice Checkpoint events
+    event LockCheckpoint(uint256 indexed tokenId, int128 oldBalance, int128 newBalance);
+    event GlobalCheckpoint(int128 oldSupply, int128 newSupply);
+    /// @notice Delegate events
+    event DelegateCheckpoint(address indexed delegatee, uint256 oldVotes, uint256 newVotes);
+
+    /// -----------------------------------------------------------------------
+    /// Errors
+    /// -----------------------------------------------------------------------
+
     error AlreadyVoted();
     error InvalidNonce();
     error InvalidDelegatee();
