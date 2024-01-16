@@ -543,7 +543,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The ID of the lock token delegating the votes
      * @param delegatee The address to which the votes are being delegated
      */
-    function delegateLock(uint256 _tokenId, address delegatee) external checkAuthorized(_tokenId) {
+    function delegate(uint256 _tokenId, address delegatee) external checkAuthorized(_tokenId) {
         (address fromDelegatee, address toDelegatee) = edStore.delegate(
             _tokenId,
             delegatee,
