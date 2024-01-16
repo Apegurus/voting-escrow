@@ -38,8 +38,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /// @notice The token being locked
     IERC20 public token;
     /// @notice Total locked supply
-    // TODO: Update to uint256
-    int128 public supply;
+    uint256 public supply;
 
     /// @notice The EIP-712 typehash for the delegation struct used by the contract
     bytes32 public constant DELEGATION_TYPEHASH =
@@ -105,7 +104,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param to The receiver of the lock
      */
     function _createLock(
-        int128 value,
+        uint256 value,
         uint256 duration,
         address to,
         address delegatee,
@@ -139,7 +138,11 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _permanent Whether the lock is permanent or not
      * @return The id of the newly created token
      */
-    function createLock(int128 _value, uint256 _lockDuration, bool _permanent) external nonReentrant returns (uint256) {
+    function createLock(
+        uint256 _value,
+        uint256 _lockDuration,
+        bool _permanent
+    ) external nonReentrant returns (uint256) {
         return _createLock(_value, _lockDuration, _msgSender(), _msgSender(), _permanent);
     }
 
@@ -152,7 +155,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @return The id of the newly created token
      */
     function createLockFor(
-        int128 _value,
+        uint256 _value,
         uint256 _lockDuration,
         address _to,
         bool _permanent
@@ -170,7 +173,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @return The id of the newly created token
      */
     function createDelegatedLockFor(
-        int128 _value,
+        uint256 _value,
         uint256 _lockDuration,
         address _to,
         address _delegatee,
@@ -202,12 +205,12 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /// @param _oldLocked Previous locked amount / timestamp
     function _updateLock(
         uint256 _tokenId,
-        int128 _increasedValue,
+        uint256 _increasedValue,
         uint256 _unlockTime,
         LockDetails memory _oldLocked,
         bool isPermanent
     ) internal {
-        int128 supplyBefore = supply;
+        uint256 supplyBefore = supply;
         supply += _increasedValue;
 
         // Set newLocked to _oldLocked without mangling memory
@@ -239,7 +242,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         _checkpointLock(_tokenId, _oldLocked, newLocked);
 
         if (_increasedValue != 0) {
-            token.safeTransferFrom(_msgSender(), address(this), _increasedValue.toUint256());
+            token.safeTransferFrom(_msgSender(), address(this), _increasedValue);
         }
 
         emit SupplyUpdated(supply, supplyBefore + _increasedValue);
@@ -254,7 +257,13 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         IVotingEscrow.LockDetails memory _oldLocked,
         IVotingEscrow.LockDetails memory _newLocked
     ) internal {
-        edStore.checkpoint(_tokenId, _oldLocked.amount, _newLocked.amount, _oldLocked.endTime, _newLocked.endTime);
+        edStore.checkpoint(
+            _tokenId,
+            _oldLocked.amount.toInt128(),
+            _newLocked.amount.toInt128(),
+            _oldLocked.endTime,
+            _newLocked.endTime
+        );
     }
 
     /// @notice Deposit `_value` tokens for `_tokenId` and add to the lock
@@ -269,7 +278,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         if (oldLocked.amount <= 0) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
-        _updateLock(_tokenId, _value.toInt128(), 0, oldLocked, oldLocked.isPermanent);
+        _updateLock(_tokenId, _value, 0, oldLocked, oldLocked.isPermanent);
     }
 
     /**
@@ -336,8 +345,8 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         // Reset the lock details
         lockDetails[_tokenId] = IVotingEscrow.LockDetails(0, 0, 0, false);
         // Update the total supply
-        int128 supplyBefore = supply;
-        supply -= amountClaimed.toInt128();
+        uint256 supplyBefore = supply;
+        supply -= amountClaimed;
 
         // Update the lock details
         _checkpointLock(_tokenId, oldLocked, lockDetails[_tokenId]);
@@ -396,7 +405,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         // Update the lock details
         _checkpointLock(_to, oldLockedTo, newLockedTo);
         lockDetails[_to] = newLockedTo;
-        emit LockMerged(_from, _to, newLockedTo.amount.toUint256(), end, newLockedTo.isPermanent);
+        emit LockMerged(_from, _to, newLockedTo.amount, end, newLockedTo.isPermanent);
     }
 
     /**
@@ -416,7 +425,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         if (value == 0) revert ZeroAmount();
 
         // reset supply, _deposit_for increase it
-        supply -= value.toInt128();
+        supply -= value;
 
         uint256 i;
         uint256 totalWeight = 0;
@@ -438,7 +447,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         for (i = 0; i < weightsLen; i++) {
             _value = (value * _weights[i]) / totalWeight;
             /// @dev Delegatee is set to owner on splits. Will need to re-delegate if desired
-            _createLock(_value.toInt128(), duration, owner, owner, locked.isPermanent);
+            _createLock(_value, duration, owner, owner, locked.isPermanent);
         }
         emit LockSplit(_weights, _tokenId);
     }
@@ -687,7 +696,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @dev See {ERC5725}.
      */
     function _payout(uint256 tokenId) internal view override returns (uint256) {
-        return lockDetails[tokenId].amount.toUint256();
+        return lockDetails[tokenId].amount;
     }
 
     /**

@@ -5,7 +5,7 @@ import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 
 interface IVotingEscrow is IERC5805 {
     struct LockDetails {
-        int128 amount; /// @dev amount of tokens locked
+        uint256 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started
         uint256 endTime; /// @dev when locking ends
         bool isPermanent; /// @dev if its a permanent lock
@@ -15,10 +15,10 @@ interface IVotingEscrow is IERC5805 {
     /// Events
     /// -----------------------------------------------------------------------
 
-    event SupplyUpdated(int128 oldSupply, int128 newSupply);
+    event SupplyUpdated(uint256 oldSupply, uint256 newSupply);
     /// @notice Lock events
-    event LockCreated(uint256 indexed tokenId, address indexed to, int128 value, uint256 unlockTime, bool isPermanent);
-    event LockUpdated(uint256 indexed tokenId, int128 value, uint256 unlockTime, bool isPermanent);
+    event LockCreated(uint256 indexed tokenId, address indexed to, uint256 value, uint256 unlockTime, bool isPermanent);
+    event LockUpdated(uint256 indexed tokenId, uint256 value, uint256 unlockTime, bool isPermanent);
     event LockMerged(
         uint256 indexed fromTokenId,
         uint256 indexed toTokenId,
