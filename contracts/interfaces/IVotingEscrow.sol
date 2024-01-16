@@ -30,11 +30,7 @@ interface IVotingEscrow is IERC5805 {
     event LockDurationExtended(uint256 indexed tokenId, uint256 newUnlockTime, bool isPermanent);
     event LockAmountIncreased(uint256 indexed tokenId, uint256 value);
     event UnlockPermanent(uint256 indexed tokenId, address indexed sender, uint256 unlockTime);
-    /// @notice Checkpoint events
-    event LockCheckpoint(uint256 indexed tokenId, int128 oldBalance, int128 newBalance);
-    event GlobalCheckpoint(int128 oldSupply, int128 newSupply);
     /// @notice Delegate events
-    event DelegateCheckpoint(address indexed delegatee, uint256 oldVotes, uint256 newVotes);
     event LockDelegateChanged(
         uint256 indexed tokenId,
         address indexed delegator,

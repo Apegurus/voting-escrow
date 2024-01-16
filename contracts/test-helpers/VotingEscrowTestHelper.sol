@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {VotingEscrow} from "../VotingEscrow.sol";
-import {EscrowDelegateCheckpoints} from "../systems/EscrowDelegateCheckpoints.sol";
+import {EscrowDelegateCheckpoints} from "../libraries/EscrowDelegateCheckpoints.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 
 contract VotingEscrowTestHelper {

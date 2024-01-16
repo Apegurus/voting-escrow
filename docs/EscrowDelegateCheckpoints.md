@@ -56,6 +56,12 @@ event CheckpointGlobal(uint48 timestamp, int128 slope, int128 bias, int128 perma
 event CheckpointDelegate(address delegatee, uint48 timestamp, int128 slope, int128 bias, int128 permanent)
 ```
 
+### CheckpointEscrow
+
+```solidity
+event CheckpointEscrow(uint256 escrowId, uint48 timestamp, int128 slope, int128 bias, int128 permanent)
+```
+
 ### clock
 
 ```solidity

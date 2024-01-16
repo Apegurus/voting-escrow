@@ -67,33 +67,13 @@ event LockAmountIncreased(uint256 tokenId, uint256 value)
 event UnlockPermanent(uint256 tokenId, address sender, uint256 unlockTime)
 ```
 
-### LockCheckpoint
-
-```solidity
-event LockCheckpoint(uint256 tokenId, int128 oldBalance, int128 newBalance)
-```
-
-Checkpoint events
-
-### GlobalCheckpoint
-
-```solidity
-event GlobalCheckpoint(int128 oldSupply, int128 newSupply)
-```
-
-### DelegateCheckpoint
-
-```solidity
-event DelegateCheckpoint(address delegatee, uint256 oldVotes, uint256 newVotes)
-```
-
-Delegate events
-
 ### LockDelegateChanged
 
 ```solidity
 event LockDelegateChanged(uint256 tokenId, address delegator, address fromDelegate, address toDelegate)
 ```
+
+Delegate events
 
 ### AlreadyVoted
 

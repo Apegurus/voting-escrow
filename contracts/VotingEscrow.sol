@@ -18,8 +18,8 @@ import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
-import {EscrowDelegateCheckpoints} from "./systems/EscrowDelegateCheckpoints.sol";
-import {EscrowDelegateStorage} from "./systems/EscrowDelegateStorage.sol";
+import {EscrowDelegateCheckpoints} from "./libraries/EscrowDelegateCheckpoints.sol";
+import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
 
 /**
  * @title VotingEscrow

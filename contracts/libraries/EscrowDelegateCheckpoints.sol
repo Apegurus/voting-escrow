@@ -44,6 +44,7 @@ library EscrowDelegateCheckpoints {
 
     event CheckpointGlobal(uint48 timestamp, int128 slope, int128 bias, int128 permanent);
     event CheckpointDelegate(address delegatee, uint48 timestamp, int128 slope, int128 bias, int128 permanent);
+    event CheckpointEscrow(uint256 escrowId, uint48 timestamp, int128 slope, int128 bias, int128 permanent);
 
     /**
      * @notice Clock used for flagging checkpoints.
@@ -141,6 +142,7 @@ library EscrowDelegateCheckpoints {
             }
             /// @dev Add the new point to the escrowId Checkpoints.Trace
             _pushPointAtClock(store_._escrowCheckpoints[escrowId], uNewPoint);
+            emit CheckpointEscrow(escrowId, clock(), uNewPoint.slope, uNewPoint.bias, uNewPoint.permanent);
 
             (, uint48 delegateTs, address delegateeAddress) = store_
                 ._escrowDelegateeAddress[escrowId]
