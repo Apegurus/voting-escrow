@@ -77,8 +77,8 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      */
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         address previousOwner = super._update(to, tokenId, auth);
-        // NOTE: Resets the delegation on transfer
         if (to != previousOwner) {
+            /// @dev Sets delegatee to new owner on transfers
             (address oldDelegatee, address newDelegatee) = edStore.delegate(tokenId, to, lockDetails[tokenId].endTime);
             emit DelegateChanged(to, oldDelegatee, newDelegatee);
             emit LockDelegateChanged(tokenId, to, oldDelegatee, newDelegatee);
@@ -305,8 +305,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to unlock
      */
     function unlockPermanent(uint256 _tokenId) external nonReentrant checkAuthorized(_tokenId) {
-        // TODO: revert or remove?
-        // if (voted[_tokenId]) revert AlreadyVoted();
         LockDetails memory newLocked = lockDetails[_tokenId];
         if (!newLocked.isPermanent) revert NotPermanentLock();
 
@@ -327,9 +325,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to claim the payout for
      */
     function _claim(uint256 _tokenId) internal validToken(_tokenId) nonReentrant checkAuthorized(_tokenId) {
-        // TODO: revert or remove?
-        // if (voted[_tokenId]) revert AlreadyVoted();
-
         IVotingEscrow.LockDetails memory oldLocked = lockDetails[_tokenId];
         if (oldLocked.isPermanent) revert PermanentLock();
 
@@ -355,7 +350,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         // Transfer the claimed amount to the sender
         IERC20(_payoutToken(_tokenId)).safeTransfer(msg.sender, amountClaimed);
 
-        emit SupplyUpdated(supplyBefore, supplyBefore - supply);
+        emit SupplyUpdated(supplyBefore, supply);
     }
 
     /**
@@ -372,8 +367,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _to The id of the token to merge to
      */
     function merge(uint256 _from, uint256 _to) external nonReentrant checkAuthorized(_from) checkAuthorized(_to) {
-        // TODO: revert or remove?
-        // if (voted[_from]) revert AlreadyVoted();
         if (_from == _to) revert SameNFT();
 
         IVotingEscrow.LockDetails memory oldLockedTo = lockDetails[_to];
@@ -412,12 +405,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to split
      */
     function split(uint256[] memory _weights, uint256 _tokenId) external nonReentrant checkAuthorized(_tokenId) {
-        // check permission and vote
-        // TODO: revert or remove?
-        // require(attachments[_tokenId] == 0 && !voted[_tokenId], "attached");
         address owner = _ownerOf(_tokenId);
-        // TODO: revert or remove?
-        // if (voted[_from]) revert AlreadyVoted();
 
         LockDetails memory locked = lockDetails[_tokenId];
         uint256 endTime = locked.endTime;
@@ -449,7 +437,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         uint256 _value = 0;
         for (i = 0; i < weightsLen; i++) {
             _value = (value * _weights[i]) / totalWeight;
-            // TODO: Revist this and decide if ownerr is delegatee or past delegatee should be used
+            /// @dev Delegatee is set to owner on splits. Will need to re-delegate if desired
             _createLock(_value.toInt128(), duration, owner, owner, locked.isPermanent);
         }
         emit LockSplit(_weights, _tokenId);
@@ -460,8 +448,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     //////////////////////////////////////////////////////////////*/
 
     function balanceOfNFT(uint256 _tokenId) public view returns (uint256) {
-        // TODO: return or remove?
-        // if (ownershipChange[_tokenId] == block.number) return 0;
         return edStore.getAdjustedEscrowBias(_tokenId, block.timestamp);
     }
 
@@ -603,7 +589,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         bytes32 r,
         bytes32 s
     ) external override(IVotes) {
-        if (delegatee == msg.sender || delegatee != address(0)) revert InvalidDelegatee();
+        if (delegatee == msg.sender || delegatee == address(0)) revert InvalidDelegatee();
 
         bytes32 domainSeparator = _domainSeparatorV4();
         bytes32 structHash = keccak256(abi.encode(DELEGATION_TYPEHASH, delegatee, nonce, expiry));

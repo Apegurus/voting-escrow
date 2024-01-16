@@ -42,6 +42,9 @@ library EscrowDelegateCheckpoints {
         mapping(address delegatee => mapping(uint256 timestamp => int128 slopeChange)) delegateeSlopeChanges;
     }
 
+    event CheckpointGlobal(uint48 timestamp, int128 slope, int128 bias, int128 permanent);
+    event CheckpointDelegate(address delegatee, uint48 timestamp, int128 slope, int128 bias, int128 permanent);
+
     /**
      * @notice Clock used for flagging checkpoints.
      * @return Current timestamp
@@ -137,7 +140,7 @@ library EscrowDelegateCheckpoints {
                 // else: we recorded it already in oldDslope
             }
             /// @dev Add the new point to the escrowId Checkpoints.Trace
-            _pushStruct(store_._escrowCheckpoints[escrowId], uNewPoint);
+            _pushPointAtClock(store_._escrowCheckpoints[escrowId], uNewPoint);
 
             (, uint48 delegateTs, address delegateeAddress) = store_
                 ._escrowDelegateeAddress[escrowId]
@@ -156,7 +159,7 @@ library EscrowDelegateCheckpoints {
     /**
      * @dev Function to update global checkpoint
      */
-    function globalCheckpoint(EscrowDelegateStore storage store_) internal {
+    function globalCheckpoint(EscrowDelegateStore storage store_) external {
         globalCheckpoint(store_, 0, Checkpoints.blankPoint(), Checkpoints.blankPoint());
     }
 
@@ -181,7 +184,7 @@ library EscrowDelegateCheckpoints {
             uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
             uint256 maxTime = testTime + MAX_TIME.toUint256();
 
-            while (testTime != block.timestamp) {
+            while (testTime < block.timestamp) {
                 testTime += CLOCK_UNIT;
                 int128 dSlope = 0;
                 if (testTime > block.timestamp) {
@@ -213,7 +216,8 @@ library EscrowDelegateCheckpoints {
             lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / PRECISION;
         }
 
-        _pushStruct(store_._globalCheckpoints, lastGlobal);
+        _pushPointAtClock(store_._globalCheckpoints, lastGlobal);
+        emit CheckpointGlobal(clock(), lastGlobal.slope, lastGlobal.bias, lastGlobal.permanent);
     }
 
     /**
@@ -248,7 +252,7 @@ library EscrowDelegateCheckpoints {
         if (!exists) return lastPoint;
         uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
         uint256 maxTime = testTime + MAX_TIME.toUint256();
-        while (testTime != timestamp) {
+        while (testTime < timestamp) {
             testTime += CLOCK_UNIT;
             int128 dSlope = 0;
             if (testTime > timestamp) {
@@ -320,7 +324,7 @@ library EscrowDelegateCheckpoints {
         if (endTime > block.timestamp) {
             _checkpointDelegatee(store_, delegatee, lastPoint, endTime, true);
         }
-        _pushAddress(store_._escrowDelegateeAddress[escrowId], delegatee);
+        _pushAddressAtClock(store_._escrowDelegateeAddress[escrowId], delegatee);
         return (oldDelegatee, delegatee);
     }
 
@@ -360,7 +364,8 @@ library EscrowDelegateCheckpoints {
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
         // if (lastPoint.slope == 0) lastPoint.bias = 0;
-        _pushStruct(store_._delegateCheckpoints[delegateeAddress], lastPoint);
+        _pushPointAtClock(store_._delegateCheckpoints[delegateeAddress], lastPoint);
+        emit CheckpointDelegate(delegateeAddress, clock(), lastPoint.slope, lastPoint.bias, lastPoint.permanent);
     }
 
     /**
@@ -385,7 +390,7 @@ library EscrowDelegateCheckpoints {
             uint256 maxTime = testTime + MAX_TIME.toUint256();
 
             // Iterate over time until current block timestamp or maxtime
-            while (testTime != block.timestamp) {
+            while (testTime < block.timestamp) {
                 testTime += CLOCK_UNIT;
                 int128 dSlope = 0;
                 if (testTime > block.timestamp) {
@@ -435,7 +440,7 @@ library EscrowDelegateCheckpoints {
         uint256 maxTime = testTime + MAX_TIME.toUint256();
 
         // Iterate over time until the specified timestamp or maxtime is reached
-        while (testTime != timestamp) {
+        while (testTime < timestamp) {
             testTime += CLOCK_UNIT;
             int128 dSlope = 0;
             if (testTime > timestamp) {
@@ -491,7 +496,10 @@ library EscrowDelegateCheckpoints {
      * @param value The address to be pushed
      * @return The old and new address
      */
-    function _pushAddress(Checkpoints.TraceAddress storage store, address value) private returns (address, address) {
+    function _pushAddressAtClock(
+        Checkpoints.TraceAddress storage store,
+        address value
+    ) private returns (address, address) {
         return store.push(clock(), value);
     }
 
@@ -501,7 +509,7 @@ library EscrowDelegateCheckpoints {
      * @param value The struct to be pushed
      * @return The old and new struct
      */
-    function _pushStruct(
+    function _pushPointAtClock(
         Checkpoints.Trace storage store,
         Checkpoints.Point memory value
     ) private returns (Checkpoints.Point memory, Checkpoints.Point memory) {

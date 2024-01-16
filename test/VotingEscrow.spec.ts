@@ -1320,8 +1320,8 @@ describe('VotingEscrow', function () {
 
       await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
 
-      await connectedEscrow['delegate(uint256,address)'](1, bob.address)
-      await connectedEscrow['delegate(uint256,address)'](3, alice.address)
+      await votingEscrow.connect(alice)['delegate(uint256,address)'](1, bob.address)
+      await votingEscrow.connect(calvin)['delegate(uint256,address)'](3, alice.address)
       latestTime = await time.latest()
 
       let updatedState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
@@ -1336,8 +1336,8 @@ describe('VotingEscrow', function () {
       expect(updatedState[0].bias.add(updatedState[1].bias)).to.equal(updatedState[1].votes)
       expect(updatedState[2].bias).to.equal(updatedState[0].votes)
 
-      await connectedEscrow['delegate(uint256,address)'](1, calvin.address)
-      await connectedEscrow['delegate(uint256,address)'](2, alice.address)
+      await votingEscrow.connect(alice)['delegate(uint256,address)'](1, calvin.address)
+      await votingEscrow.connect(bob)['delegate(uint256,address)'](2, alice.address)
 
       latestTime = await time.latest()
 
@@ -1346,7 +1346,7 @@ describe('VotingEscrow', function () {
       expect(updatedState[0].bias).to.equal(updatedState[2].votes)
       expect(updatedState[1].bias.add(updatedState[2].bias)).to.equal(updatedState[0].votes)
 
-      await connectedEscrow['delegate(uint256,address)'](1, bob.address)
+      await votingEscrow.connect(alice)['delegate(uint256,address)'](1, bob.address)
 
       latestTime = await time.latest()
 
@@ -1355,9 +1355,9 @@ describe('VotingEscrow', function () {
       expect(updatedState[0].bias).to.equal(updatedState[1].votes)
       expect(updatedState[1].bias.add(updatedState[2].bias)).to.equal(updatedState[0].votes)
 
-      await connectedEscrow['delegate(uint256,address)'](1, alice.address)
-      await connectedEscrow['delegate(uint256,address)'](2, bob.address)
-      await connectedEscrow['delegate(uint256,address)'](3, calvin.address)
+      await votingEscrow.connect(alice)['delegate(uint256,address)'](1, alice.address)
+      await votingEscrow.connect(bob)['delegate(uint256,address)'](2, bob.address)
+      await votingEscrow.connect(calvin)['delegate(uint256,address)'](3, calvin.address)
 
       latestTime = await time.latest()
       await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
@@ -1517,8 +1517,8 @@ describe('VotingEscrow', function () {
       let updatedState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
       stateHistory[latestTime] = updatedState
 
-      await connectedEscrow['delegate(uint256,address)'](1, bob.address)
-      await connectedEscrow['delegate(uint256,address)'](3, alice.address)
+      await votingEscrow.connect(alice)['delegate(uint256,address)'](1, bob.address)
+      await votingEscrow.connect(calvin)['delegate(uint256,address)'](3, alice.address)
 
       latestTime = await time.latest()
       updatedState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)

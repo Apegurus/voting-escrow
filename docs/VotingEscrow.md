@@ -460,10 +460,10 @@ _This function implements IVotes interface.
 | ---- | ---- | ----------- |
 | [0] | address | The delegate of the delegatee, or address(1) if multiple different delegates are found |
 
-### delegateLock
+### delegate
 
 ```solidity
-function delegateLock(uint256 _tokenId, address delegatee) external
+function delegate(uint256 _tokenId, address delegatee) external
 ```
 
 Delegates votes from a specific lock to a delegatee

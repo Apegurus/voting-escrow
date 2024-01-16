@@ -18,7 +18,8 @@ Maximum time for a checkpoint
 int128 PRECISION
 ```
 
-Precision of calculations. MAX_TIME is the denominator in calculations below, this mitigates rounding errors.
+Precision of calculations. MAX_TIME is the denominator in calculations below,
+ this mitigates rounding errors.
 
 _Should be greater than MAX_TIME to prevent rounding errors_
 
@@ -41,6 +42,18 @@ struct EscrowDelegateStore {
   mapping(uint256 => struct Checkpoints.TraceAddress) _escrowDelegateeAddress;
   mapping(address => mapping(uint256 => int128)) delegateeSlopeChanges;
 }
+```
+
+### CheckpointGlobal
+
+```solidity
+event CheckpointGlobal(uint48 timestamp, int128 slope, int128 bias, int128 permanent)
+```
+
+### CheckpointDelegate
+
+```solidity
+event CheckpointDelegate(address delegatee, uint48 timestamp, int128 slope, int128 bias, int128 permanent)
 ```
 
 ### clock
@@ -113,7 +126,7 @@ _Record global and per-escrow data to checkpoints. Used by VotingEscrow system._
 ### globalCheckpoint
 
 ```solidity
-function globalCheckpoint(struct EscrowDelegateCheckpoints.EscrowDelegateStore store_) internal
+function globalCheckpoint(struct EscrowDelegateCheckpoints.EscrowDelegateStore store_) external
 ```
 
 _Function to update global checkpoint_
