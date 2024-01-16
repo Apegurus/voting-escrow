@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
+
 import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 
 interface IVotingEscrow is IERC5805 {
@@ -14,6 +15,7 @@ interface IVotingEscrow is IERC5805 {
     /// Events
     /// -----------------------------------------------------------------------
 
+    event SupplyUpdated(int128 oldSupply, int128 newSupply);
     /// @notice Lock events
     event LockCreated(uint256 indexed tokenId, address indexed to, int128 value, uint256 unlockTime, bool isPermanent);
     event LockUpdated(uint256 indexed tokenId, int128 value, uint256 unlockTime, bool isPermanent);
@@ -25,7 +27,7 @@ interface IVotingEscrow is IERC5805 {
         bool isPermanent
     );
     event LockSplit(uint256[] splitWeights, uint256 indexed _tokenId);
-    event LockDurationExtended(uint256 indexed tokenId, uint256 newUnlockTime);
+    event LockDurationExtended(uint256 indexed tokenId, uint256 newUnlockTime, bool isPermanent);
     event LockAmountIncreased(uint256 indexed tokenId, uint256 value);
     event UnlockPermanent(uint256 indexed tokenId, address indexed sender, uint256 unlockTime);
     /// @notice Checkpoint events
@@ -33,6 +35,12 @@ interface IVotingEscrow is IERC5805 {
     event GlobalCheckpoint(int128 oldSupply, int128 newSupply);
     /// @notice Delegate events
     event DelegateCheckpoint(address indexed delegatee, uint256 oldVotes, uint256 newVotes);
+    event LockDelegateChanged(
+        uint256 indexed tokenId,
+        address indexed delegator,
+        address fromDelegate,
+        address indexed toDelegate
+    );
 
     /// -----------------------------------------------------------------------
     /// Errors

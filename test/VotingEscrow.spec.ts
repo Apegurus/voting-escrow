@@ -30,6 +30,7 @@ async function fixture() {
 }
 
 const MAX_TIME = 2 * 365 * 86400
+// const PRECISION = 1e8
 const PRECISION = 1
 
 async function mineAndGetLatestTime() {
@@ -54,7 +55,7 @@ async function validateState(
     biasPromises.push(votingEscrow.balanceOfNFTAt(token.tokenId, testTime))
     locksPromises.push(votingEscrowTestHelper.balanceOfLockAt(token.tokenId, testTime))
     detailsPromises.push(votingEscrow.lockDetails(token.tokenId))
-    delegatesPromises.push(votingEscrow.getEscrowDelegateeAtTime(token.tokenId, testTime))
+    delegatesPromises.push(votingEscrow.getLockDelegateeAtTime(token.tokenId, testTime))
     if (!votesAccounts[token.account.address] && votesAccounts[token.account.address] !== 0) {
       votesPromises.push(votingEscrow.getPastVotes(token.account.address, testTime))
       votesAccounts[token.account.address] = votesPromises.length - 1
