@@ -17,7 +17,8 @@ library EscrowDelegateCheckpoints {
 
     /// @notice Maximum time for a checkpoint
     int128 public constant MAX_TIME = 2 * 365 * 86400;
-    /// @notice Precision of calculations. MAX_TIME is the denominator in calculations below, this mitigates rounding errors.
+    /// @notice Precision of calculations. MAX_TIME is the denominator in calculations below,
+    ///  this mitigates rounding errors.
     /// @dev Should be greater than MAX_TIME to prevent rounding errors
     // TODO: Still set to 1
     int128 public constant PRECISION = 1;
