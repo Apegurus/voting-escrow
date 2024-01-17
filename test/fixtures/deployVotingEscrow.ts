@@ -1,5 +1,6 @@
 import { time } from '@nomicfoundation/hardhat-network-helpers'
 import { ethers } from 'hardhat'
+import { VotingEscrow, VotingEscrowTestHelper__factory, VotingEscrow__factory } from '../../typechain-types'
 
 export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
   const [owner, alice, bob, calvin] = await _ethers.getSigners()
@@ -10,14 +11,16 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
   const EscrowDelegateCheckpoints = await _ethers.getContractFactory('EscrowDelegateCheckpoints')
   const escrowDelegateCheckpoints = await EscrowDelegateCheckpoints.deploy()
 
-  const VotingEscrow = await _ethers.getContractFactory('VotingEscrow', {
+  const VotingEscrow = (await _ethers.getContractFactory('VotingEscrow', {
     libraries: {
       EscrowDelegateCheckpoints: escrowDelegateCheckpoints.address,
     },
-  })
+  })) as VotingEscrow__factory
   const votingEscrow = await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)
 
-  const VotingEscrowTestHelper = await _ethers.getContractFactory('VotingEscrowTestHelper')
+  const VotingEscrowTestHelper = (await _ethers.getContractFactory(
+    'VotingEscrowTestHelper'
+  )) as VotingEscrowTestHelper__factory
   const votingEscrowTestHelper = await VotingEscrowTestHelper.deploy(votingEscrow.address)
 
   await mockToken.approve(votingEscrow.address, '100000000000000000000000000000000000')

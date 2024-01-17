@@ -1,7 +1,7 @@
 /**
  * Set the Solidity compiler versions
  */
-const SOLC_COMPILER_VERSIONS = ['0.8.23']
+const SOLC_COMPILER_VERSIONS = ['0.8.19']
 
 /**
  *

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.23;
+pragma solidity 0.8.19;
 
 import {VotingEscrow} from "../VotingEscrow.sol";
 import {EscrowDelegateCheckpoints} from "../libraries/EscrowDelegateCheckpoints.sol";
