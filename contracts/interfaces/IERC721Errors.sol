@@ -5,7 +5,8 @@ pragma solidity ^0.8.0;
  * @dev Standard ERC-721 Errors
  * @notice This update is included in openzeppelin/contracts@5.x, but not in openzeppelin/contracts@4.x
  * Interface of the https://eips.ethereum.org/EIPS/eip-6093[ERC-6093] custom errors for ERC-721 tokens.
- * @custom:source https://github.com/OpenZeppelin/openzeppelin-contracts/blob/0b343abcb5cecc42c40b95565cb7f5affb542727/contracts/interfaces/draft-IERC6093.sol#L55
+ * @custom:source https://github.com/OpenZeppelin/openzeppelin-contracts/blob/...
+ *   0b343abcb5cecc42c40b95565cb7f5affb542727/contracts/interfaces/draft-IERC6093.sol#L55
  */
 interface IERC721Errors {
     /**
