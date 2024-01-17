@@ -100,8 +100,8 @@
   },
   "dependencies": {
     "@erc-5725/interfaces": "^1.1.2",
-    "@openzeppelin/contracts": "^5.0.0",
-    "@openzeppelin/contracts-upgradeable": "^5.0.0",
+    "@openzeppelin/contracts": "^4.9.5",
+    "@openzeppelin/contracts-upgradeable": "^4.9.5",
     "@openzeppelin/hardhat-upgrades": "^1.22.1",
     "lodash": "^4.17.21"
   }

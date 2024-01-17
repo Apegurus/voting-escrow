@@ -761,7 +761,7 @@ describe('VotingEscrow', function () {
         expect(lock1.amount).to.equal(lockedAmount / 2)
         expect(lock1.amount).to.equal(lock2.amount)
 
-        await expect(votingEscrow.ownerOf(1)).to.be.revertedWithCustomError(connectedEscrow, 'ERC721NonexistentToken')
+        await expect(votingEscrow.ownerOf(1)).to.be.revertedWith('ERC721: invalid token ID')
         await validateState(
           [
             { tokenId: token1, account: alice },

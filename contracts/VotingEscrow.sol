@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v5.0.0) (token/ERC721/extensions/ERC721Votes.sol)
-
-pragma solidity ^0.8.23;
+pragma solidity 0.8.19;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -18,6 +15,8 @@ import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
+import {Time} from "./libraries/Time.sol";
+
 import {EscrowDelegateCheckpoints} from "./libraries/EscrowDelegateCheckpoints.sol";
 import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
 
@@ -46,6 +45,9 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /// @notice A record of states for signing / validating signatures
     mapping(address => uint256) public nonces;
 
+    /// @dev OpenZeppelin v5 IVotes error
+    error VotesExpiredSignature(uint256 expiry);
+
     /**
      * @dev Initializes the contract by setting a `name`, `symbol`, `version` and `mainToken`.
      */
@@ -59,7 +61,14 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     }
 
     modifier checkAuthorized(uint256 _tokenId) {
-        _checkAuthorized(_ownerOf(_tokenId), _msgSender(), _tokenId);
+        address owner = _ownerOf(_tokenId);
+        if (owner == address(0)) {
+            revert ERC721NonexistentToken(_tokenId);
+        }
+        address sender = _msgSender();
+        if (!_isAuthorized(owner, sender, _tokenId)) {
+            revert ERC721InsufficientApproval(sender, _tokenId);
+        }
         _;
     }
 
@@ -71,19 +80,29 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     }
 
     /**
-     * @dev See {ERC721-_update}. Adjusts votes when tokens are transferred.
-     * Emits a {IVotes-DelegateVotesChanged} event.
+     * @dev See {IERC721-_beforeTokenTransfer}.
+     * Clears the approval of a given `tokenId` when the token is transferred or burned.
      */
-    function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
-        address previousOwner = super._update(to, tokenId, auth);
-        if (to != previousOwner) {
-            /// @dev Sets delegatee to new owner on transfers
-            (address oldDelegatee, address newDelegatee) = edStore.delegate(tokenId, to, lockDetails[tokenId].endTime);
-            emit DelegateChanged(to, oldDelegatee, newDelegatee);
-            emit LockDelegateChanged(tokenId, to, oldDelegatee, newDelegatee);
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 firstTokenId,
+        uint256 batchSize
+    ) internal virtual override {
+        super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
+        for (uint256 i = 0; i < batchSize; i++) {
+            uint256 tokenId = firstTokenId + i;
+            if (from != to) {
+                /// @dev Sets delegatee to new owner on transfers
+                (address oldDelegatee, address newDelegatee) = edStore.delegate(
+                    tokenId,
+                    to,
+                    lockDetails[tokenId].endTime
+                );
+                emit DelegateChanged(to, oldDelegatee, newDelegatee);
+                emit LockDelegateChanged(tokenId, to, oldDelegatee, newDelegatee);
+            }
         }
-
-        return previousOwner;
     }
 
     /**
@@ -414,23 +433,18 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to split
      */
     function split(uint256[] memory _weights, uint256 _tokenId) external nonReentrant checkAuthorized(_tokenId) {
-        address owner = _ownerOf(_tokenId);
-
         LockDetails memory locked = lockDetails[_tokenId];
-        uint256 endTime = locked.endTime;
-        uint256 value = uint(int256(locked.amount));
         uint256 currentTime = block.timestamp;
-
-        if (endTime <= currentTime && !locked.isPermanent) revert LockExpired();
-        if (value == 0) revert ZeroAmount();
+        /// @dev Pulling directly from locked struct to avoid stack-too-deep
+        if (locked.endTime <= currentTime && !locked.isPermanent) revert LockExpired();
+        if (locked.amount == 0) revert ZeroAmount();
 
         // reset supply, _deposit_for increase it
-        supply -= value;
-
-        uint256 i;
+        supply -= uint256(int256(locked.amount));
+        // Capture owner for split
+        address owner = _ownerOf(_tokenId);
         uint256 totalWeight = 0;
-        uint256 weightsLen = _weights.length;
-        for (i = 0; i < weightsLen; i++) {
+        for (uint256 i = 0; i < _weights.length; i++) {
             totalWeight += _weights[i];
         }
 
@@ -438,16 +452,16 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         lockDetails[_tokenId] = LockDetails(0, 0, 0, false);
         _checkpointLock(_tokenId, locked, lockDetails[_tokenId]);
         _burn(_tokenId);
-        /// @dev Duration would be zero for permanent locks
-        uint256 duration = 0;
-        if (endTime > currentTime) duration = endTime - currentTime;
 
-        // mint
-        uint256 _value = 0;
-        for (i = 0; i < weightsLen; i++) {
-            _value = (value * _weights[i]) / totalWeight;
-            /// @dev Delegatee is set to owner on splits. Will need to re-delegate if desired
-            _createLock(_value, duration, owner, owner, locked.isPermanent);
+        uint256 duration = locked.isPermanent
+            ? 0
+            : locked.endTime > currentTime
+                ? locked.endTime - currentTime
+                : 0;
+
+        for (uint256 i = 0; i < _weights.length; i++) {
+            uint256 value = (uint256(int256(locked.amount)) * _weights[i]) / totalWeight;
+            _createLock(value, duration, owner, owner, locked.isPermanent);
         }
         emit LockSplit(_weights, _tokenId);
     }

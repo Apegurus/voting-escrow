@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.23;
+pragma solidity 0.8.19;
 
 import {ERC721Enumerable, IERC165} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 /// @dev Official ERC-5725 interface
 import {IERC5725} from "@erc-5725/interfaces/IERC5725.sol";
+import {IERC721Errors} from "../interfaces/IERC721Errors.sol";
 
-abstract contract ERC5725 is IERC5725, ERC721Enumerable {
+abstract contract ERC5725 is IERC5725, ERC721Enumerable, IERC721Errors {
     using SafeERC20 for IERC20;
 
     /// @dev mapping for claimed payouts
@@ -24,7 +25,10 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable {
      * @param tokenId The NFT token id
      */
     modifier validToken(uint256 tokenId) {
-        _requireOwned(tokenId);
+        address owner = _ownerOf(tokenId);
+        if (owner == address(0)) {
+            revert ERC721NonexistentToken(tokenId);
+        }
         _;
     }
 
@@ -173,17 +177,22 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable {
     }
 
     /**
-     * @dev See {ERC721-_update}.
-     * Removes permissions to _tokenIdApprovals[tokenId] when the tokenId is transferred, burnt, but not on mint.
-     *
+     * @dev See {IERC721-_beforeTokenTransfer}.
+     * Clears the approval of a given `tokenId` when the token is transferred or burned.
      */
-    function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
-        address previousOwner = super._update(to, tokenId, auth);
-        if (auth != address(0)) {
-            delete _tokenIdApprovals[tokenId];
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 firstTokenId,
+        uint256 batchSize
+    ) internal virtual override {
+        super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
+        for (uint256 i = 0; i < batchSize; i++) {
+            uint256 tokenId = firstTokenId + i;
+            if (from != address(0) || from != to) {
+                delete _tokenIdApprovals[tokenId];
+            }
         }
-
-        return previousOwner;
     }
 
     /**
@@ -218,4 +227,20 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable {
      * @return uint256 the end time in epoch timestamp
      */
     function _endTime(uint256 tokenId) internal view virtual returns (uint256);
+
+    /**
+     * @dev Checks if an address is authorized to manage the given token ID.
+     * Used to verify if an address has the necessary permissions to execute actions on behalf of the token owner.
+     *
+     * @param owner the owner of the token
+     * @param spender the address attempting to act on the token
+     * @param tokenId the token ID to check for authorization
+     * @return bool true if the spender is authorized, false otherwise
+     */
+
+    function _isAuthorized(address owner, address spender, uint256 tokenId) internal view virtual returns (bool) {
+        return
+            spender != address(0) &&
+            (owner == spender || isApprovedForAll(owner, spender) || getApproved(tokenId) == spender);
+    }
 }

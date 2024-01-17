@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity 0.8.19;
 
-import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
+import {Time} from "../libraries/Time.sol";
 
 /**
  * @title CheckPointSystem
