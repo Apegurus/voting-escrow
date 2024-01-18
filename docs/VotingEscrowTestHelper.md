@@ -17,13 +17,13 @@ constructor(address _votingEscrow) public
 ### createManyLocks
 
 ```solidity
-function createManyLocks(int128[] _value, uint256[] _lockDuration, address[] _to, address[] _delegtatee, bool[] _permanent) public
+function createManyLocks(uint256[] _value, uint256[] _lockDuration, address[] _to, address[] _delegatee, bool[] _permanent) public
 ```
 
 ### balanceOfLockAt
 
 ```solidity
-function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance)
+function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256 balance)
 ```
 
 Get the current voting power for `_tokenId`
@@ -42,5 +42,5 @@ _Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| balance | int128 | ser voting power |
+| balance | uint256 | ser voting power |
 

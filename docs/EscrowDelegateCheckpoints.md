@@ -12,17 +12,6 @@ int128 MAX_TIME
 
 Maximum time for a checkpoint
 
-### PRECISION
-
-```solidity
-int128 PRECISION
-```
-
-Precision of calculations. MAX_TIME is the denominator in calculations below,
- this mitigates rounding errors.
-
-_Should be greater than MAX_TIME to prevent rounding errors_
-
 ### CLOCK_UNIT
 
 ```solidity

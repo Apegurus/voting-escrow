@@ -19,7 +19,7 @@ The token being locked
 ### supply
 
 ```solidity
-int128 supply
+uint256 supply
 ```
 
 Total locked supply
@@ -39,6 +39,14 @@ mapping(address => uint256) nonces
 ```
 
 A record of states for signing / validating signatures
+
+### VotesExpiredSignature
+
+```solidity
+error VotesExpiredSignature(uint256 expiry)
+```
+
+_OpenZeppelin v5 IVotes error_
 
 ### constructor
 
@@ -62,14 +70,14 @@ function supportsInterface(bytes4 interfaceId) public view virtual returns (bool
 
 _See {IERC165-supportsInterface}._
 
-### _update
+### _beforeTokenTransfer
 
 ```solidity
-function _update(address to, uint256 tokenId, address auth) internal virtual returns (address)
+function _beforeTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal virtual
 ```
 
-_See {ERC721-_update}. Adjusts votes when tokens are transferred.
-Emits a {IVotes-DelegateVotesChanged} event._
+_See {IERC721-_beforeTokenTransfer}.
+Clears the approval of a given `tokenId` when the token is transferred or burned._
 
 ### lockDetails
 
@@ -90,7 +98,7 @@ tracker of current NFT id
 ### _createLock
 
 ```solidity
-function _createLock(int128 value, uint256 duration, address to, address delegatee, bool permanent) internal virtual returns (uint256)
+function _createLock(uint256 value, uint256 duration, address to, address delegatee, bool permanent) internal virtual returns (uint256)
 ```
 
 Creates a new vesting NFT and mints it
@@ -101,7 +109,7 @@ _Token amount should be approved to be transferred by this contract before execu
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| value | int128 | The total assets to be locked over time |
+| value | uint256 | The total assets to be locked over time |
 | duration | uint256 | Duration in seconds of the lock |
 | to | address | The receiver of the lock |
 | delegatee | address |  |
@@ -110,7 +118,7 @@ _Token amount should be approved to be transferred by this contract before execu
 ### createLock
 
 ```solidity
-function createLock(int128 _value, uint256 _lockDuration, bool _permanent) external returns (uint256)
+function createLock(uint256 _value, uint256 _lockDuration, bool _permanent) external returns (uint256)
 ```
 
 Creates a lock for the sender
@@ -119,7 +127,7 @@ Creates a lock for the sender
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _value | int128 | The total assets to be locked over time |
+| _value | uint256 | The total assets to be locked over time |
 | _lockDuration | uint256 | Duration in seconds of the lock |
 | _permanent | bool | Whether the lock is permanent or not |
 
@@ -132,7 +140,7 @@ Creates a lock for the sender
 ### createLockFor
 
 ```solidity
-function createLockFor(int128 _value, uint256 _lockDuration, address _to, bool _permanent) external returns (uint256)
+function createLockFor(uint256 _value, uint256 _lockDuration, address _to, bool _permanent) external returns (uint256)
 ```
 
 Creates a lock for a specified address
@@ -141,7 +149,7 @@ Creates a lock for a specified address
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _value | int128 | The total assets to be locked over time |
+| _value | uint256 | The total assets to be locked over time |
 | _lockDuration | uint256 | Duration in seconds of the lock |
 | _to | address | The receiver of the lock |
 | _permanent | bool | Whether the lock is permanent or not |
@@ -155,7 +163,7 @@ Creates a lock for a specified address
 ### createDelegatedLockFor
 
 ```solidity
-function createDelegatedLockFor(int128 _value, uint256 _lockDuration, address _to, address _delegatee, bool _permanent) external returns (uint256)
+function createDelegatedLockFor(uint256 _value, uint256 _lockDuration, address _to, address _delegatee, bool _permanent) external returns (uint256)
 ```
 
 Creates a lock for a specified address
@@ -164,7 +172,7 @@ Creates a lock for a specified address
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _value | int128 | The total assets to be locked over time |
+| _value | uint256 | The total assets to be locked over time |
 | _lockDuration | uint256 | Duration in seconds of the lock |
 | _to | address | The receiver of the lock |
 | _delegatee | address | The receiver of the lock |
@@ -201,7 +209,7 @@ Updates the checkpoint for a delegatee
 ### _updateLock
 
 ```solidity
-function _updateLock(uint256 _tokenId, int128 _increasedValue, uint256 _unlockTime, struct IVotingEscrow.LockDetails _oldLocked, bool isPermanent) internal
+function _updateLock(uint256 _tokenId, uint256 _increasedValue, uint256 _unlockTime, struct IVotingEscrow.LockDetails _oldLocked, bool isPermanent) internal
 ```
 
 Deposit & update lock tokens for a user
@@ -213,7 +221,7 @@ _The supply is increased by the _value amount_
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | _tokenId | uint256 | NFT that holds lock |
-| _increasedValue | int128 | Amount to deposit |
+| _increasedValue | uint256 | Amount to deposit |
 | _unlockTime | uint256 | New time when to unlock the tokens, or 0 if unchanged |
 | _oldLocked | struct IVotingEscrow.LockDetails | Previous locked amount / timestamp |
 | isPermanent | bool |  |

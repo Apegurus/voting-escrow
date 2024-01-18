@@ -6,7 +6,7 @@
 
 ```solidity
 struct LockDetails {
-  int128 amount;
+  uint256 amount;
   uint256 startTime;
   uint256 endTime;
   bool isPermanent;
@@ -16,7 +16,7 @@ struct LockDetails {
 ### SupplyUpdated
 
 ```solidity
-event SupplyUpdated(int128 oldSupply, int128 newSupply)
+event SupplyUpdated(uint256 oldSupply, uint256 newSupply)
 ```
 
 -----------------------------------------------------------------------
@@ -26,7 +26,7 @@ Events
 ### LockCreated
 
 ```solidity
-event LockCreated(uint256 tokenId, address to, int128 value, uint256 unlockTime, bool isPermanent)
+event LockCreated(uint256 tokenId, address to, uint256 value, uint256 unlockTime, bool isPermanent)
 ```
 
 Lock events
@@ -34,7 +34,7 @@ Lock events
 ### LockUpdated
 
 ```solidity
-event LockUpdated(uint256 tokenId, int128 value, uint256 unlockTime, bool isPermanent)
+event LockUpdated(uint256 tokenId, uint256 value, uint256 unlockTime, bool isPermanent)
 ```
 
 ### LockMerged
