@@ -532,7 +532,9 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function delegates(address account) external view override(IVotes) returns (address) {
         address delegatee = address(0);
         uint256 balance = balanceOf(account);
-        for (uint256 i = 0; i < balance; i++) {
+        /// @dev out-of-gas protection
+        uint256 runs = 50 > balance ? balance : 50;
+        for (uint256 i = 0; i < runs; i++) {
             uint256 tokenId = tokenOfOwnerByIndex(account, i);
             address currentDelegatee = edStore.getEscrowDelegatee(tokenId);
             /// @dev Hacky way to check if the delegatee is the same for all locks
