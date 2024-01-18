@@ -134,7 +134,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         totalNftsMinted++;
         uint256 newTokenId = totalNftsMinted;
         if (!permanent) {
-            /// TODO: Where do we normalize this
             unlockTime = toGlobalClock(block.timestamp + duration); // Locktime is rounded down to global clock (days)
             if (unlockTime <= block.timestamp) revert LockDurationNotInFuture();
             if (unlockTime > block.timestamp + MAX_TIME) revert LockDurationTooLong();
@@ -142,6 +141,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
 
         _mint(to, newTokenId);
         lockDetails[newTokenId].startTime = block.timestamp;
+        /// @dev Checkpoint created in _updateLock
         _updateLock(newTokenId, value, unlockTime, lockDetails[newTokenId], permanent);
         edStore.delegate(newTokenId, delegatee, unlockTime);
         emit LockCreated(newTokenId, delegatee, value, unlockTime, permanent);
@@ -316,7 +316,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
 
         uint256 unlockTime;
         if (!_permanent) {
-            /// TODO: Where do we normalize this
             unlockTime = toGlobalClock(block.timestamp + _lockDuration);
             // Locktime is rounded down to global clock (days)
             if (oldLocked.endTime <= block.timestamp) revert LockExpired();
@@ -420,7 +419,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
             newLockedTo.endTime = end;
         }
 
-        // TODO: Consider depositFor here (might save a few lines of code)
         // Update the lock details
         _checkpointLock(_to, oldLockedTo, newLockedTo);
         lockDetails[_to] = newLockedTo;

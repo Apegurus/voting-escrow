@@ -38,8 +38,7 @@ contract VotingEscrowTestHelper {
         if (isPermanent) return amount;
         if (startTime > _timestamp) return 0;
         if (endTime < _timestamp) return 0;
-        int128 slope = (amount.toInt128() * EscrowDelegateCheckpoints.PRECISION) / EscrowDelegateCheckpoints.MAX_TIME;
-        balance = ((slope * ((endTime).toInt128() - (_timestamp).toInt128())) / EscrowDelegateCheckpoints.PRECISION)
-            .toUint256();
+        int128 slope = amount.toInt128() / EscrowDelegateCheckpoints.MAX_TIME;
+        balance = (slope * ((endTime).toInt128() - (_timestamp).toInt128())).toUint256();
     }
 }

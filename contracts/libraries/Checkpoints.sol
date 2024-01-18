@@ -17,9 +17,17 @@ library Checkpoints {
         Checkpoint[] _checkpoints;
     }
 
+    /**
+     * @dev Struct to keep track of the voting power over time.
+     */
     struct Point {
+        /// @dev The voting power at a specific time
+        /// - MUST never be negative.
         int128 bias;
+        /// @dev The rate at which the voting power decreases over time.
         int128 slope;
+        /// @dev The value of tokens which do not decrease over time, representing permanent voting power
+        /// - MUST never be negative.
         int128 permanent;
     }
 

@@ -17,11 +17,6 @@ library EscrowDelegateCheckpoints {
 
     /// @notice Maximum time for a checkpoint
     int128 public constant MAX_TIME = 2 * 365 * 86400;
-    /// @notice Precision of calculations. MAX_TIME is the denominator in calculations below,
-    ///  this mitigates rounding errors.
-    /// @dev Should be greater than MAX_TIME to prevent rounding errors
-    // TODO: Still set to 1
-    int128 public constant PRECISION = 1;
     /// @notice Unit of time for the clock
     uint48 public constant CLOCK_UNIT = 7 days;
 
@@ -102,12 +97,12 @@ library EscrowDelegateCheckpoints {
             uOldPoint.permanent = uOldEndTime == 0 ? uOldAmount : int128(0);
             if (uOldEndTime > block.timestamp && uOldAmount > 0) {
                 /// @dev  Calculate the slope based on the older checkpoint amount
-                uOldPoint.slope = (uOldAmount * PRECISION) / MAX_TIME;
-                uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128()) / PRECISION;
+                uOldPoint.slope = (uOldAmount) / MAX_TIME;
+                uOldPoint.bias = (uOldPoint.slope * (uOldEndTime - block.timestamp).toInt128());
             }
             if (uNewEndTime > block.timestamp && uNewAmount > 0) {
-                uNewPoint.slope = (uNewAmount * PRECISION) / MAX_TIME;
-                uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128()) / PRECISION;
+                uNewPoint.slope = (uNewAmount) / MAX_TIME;
+                uNewPoint.bias = (uNewPoint.slope * (uNewEndTime - block.timestamp).toInt128());
             }
             oldDslope = store_.globalSlopeChanges[uOldEndTime];
             if (uNewEndTime != 0) {
@@ -135,8 +130,6 @@ library EscrowDelegateCheckpoints {
                 if ((uNewEndTime > uOldEndTime)) {
                     newDslope -= uNewPoint.slope; // old slope disappeared at this point
                     store_.globalSlopeChanges[uNewEndTime] = newDslope;
-                    // console.log("Pushed slope: %s to change: %s", uNewEndTime);
-                    // console.logInt(newDslope);
                 }
                 // else: we recorded it already in oldDslope
             }
@@ -195,8 +188,15 @@ library EscrowDelegateCheckpoints {
                     dSlope = store_.globalSlopeChanges[testTime];
                 }
                 if (dSlope != 0) {
-                    lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISION);
+                    lastGlobal.bias -= lastGlobal.slope * uint256(testTime - lastCheckpoint).toInt128();
                     lastGlobal.slope += dSlope;
+                    if (lastGlobal.bias < 0) {
+                        lastGlobal.bias = 0;
+                    }
+                    if (lastGlobal.slope < 0) {
+                        lastGlobal.bias = 0;
+                    }
+
                     lastCheckpoint = testTime;
                     store_._globalCheckpoints.push(lastCheckpoint, lastGlobal);
                 }
@@ -205,9 +205,7 @@ library EscrowDelegateCheckpoints {
         }
 
         if (escrowId != 0) {
-            lastGlobal.bias =
-                lastGlobal.bias -
-                ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()) / PRECISION);
+            lastGlobal.bias = lastGlobal.bias - ((lastGlobal.slope * (block.timestamp - lastCheckpoint).toInt128()));
 
             lastGlobal.slope += uNewPoint.slope - uOldPoint.slope;
             lastGlobal.bias += uNewPoint.bias - uOldPoint.bias;
@@ -215,7 +213,7 @@ library EscrowDelegateCheckpoints {
         } else {
             // Initial value of testTime is always larger than the ts of the last point
             uint256 testTime = block.timestamp;
-            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128()) / PRECISION;
+            lastGlobal.bias -= (lastGlobal.slope * (testTime - lastCheckpoint).toInt128());
         }
 
         _pushPointAtClock(store_._globalCheckpoints, lastGlobal);
@@ -263,13 +261,19 @@ library EscrowDelegateCheckpoints {
                 dSlope = store_.delegateeSlopeChanges[_delegateeAddress][testTime];
             }
             if (dSlope != 0) {
-                lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISION);
+                lastPoint.bias -= lastPoint.slope * uint256(testTime - lastCheckpointTs).toInt128();
                 lastPoint.slope += dSlope;
+                if (lastPoint.bias < 0) {
+                    lastPoint.bias = 0;
+                }
+                if (lastPoint.slope < 0) {
+                    lastPoint.slope = 0;
+                }
                 lastCheckpointTs = uint48(testTime);
             }
             if (testTime > maxTime) break;
         }
-        int128 change = (lastPoint.slope * uint256(timestamp - lastCheckpointTs).toInt128()) / PRECISION;
+        int128 change = lastPoint.slope * uint256(timestamp - lastCheckpointTs).toInt128();
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
 
         return lastPoint;
@@ -314,7 +318,7 @@ library EscrowDelegateCheckpoints {
         if (oldDelegatee == delegatee) return (oldDelegatee, delegatee);
 
         (, uint48 ts, Checkpoints.Point memory lastPoint) = store_._escrowCheckpoints[escrowId].latestCheckpoint();
-        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()) / PRECISION);
+        lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()));
         if (lastPoint.bias < 0) {
             lastPoint.bias = 0;
         }
@@ -347,9 +351,7 @@ library EscrowDelegateCheckpoints {
     ) internal {
         (Checkpoints.Point memory lastPoint, uint48 lastCheckpoint) = baseCheckpointDelegatee(store_, delegateeAddress);
 
-        int128 baseBias = lastPoint.bias -
-            (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128()) /
-            PRECISION;
+        int128 baseBias = lastPoint.bias - (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128());
 
         if (!increase) {
             store_.delegateeSlopeChanges[delegateeAddress][endTime] += escrowPoint.slope;
@@ -365,7 +367,9 @@ library EscrowDelegateCheckpoints {
             lastPoint.permanent = lastPoint.permanent + escrowPoint.permanent;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
-        // if (lastPoint.slope == 0) lastPoint.bias = 0;
+        if (lastPoint.slope == 0) {
+            lastPoint.bias = 0;
+        }
         _pushPointAtClock(store_._delegateCheckpoints[delegateeAddress], lastPoint);
         emit CheckpointDelegate(delegateeAddress, clock(), lastPoint.slope, lastPoint.bias, lastPoint.permanent);
     }
@@ -401,8 +405,14 @@ library EscrowDelegateCheckpoints {
                     dSlope = store_.delegateeSlopeChanges[delegateeAddress][testTime];
                 }
                 if (dSlope != 0) {
-                    lastPoint.bias -= ((lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128()) / PRECISION);
+                    lastPoint.bias -= lastPoint.slope * uint256(testTime - lastCheckpoint).toInt128();
                     lastPoint.slope += dSlope;
+                    if (lastPoint.bias < 0) {
+                        lastPoint.bias = 0;
+                    }
+                    if (lastPoint.slope < 0) {
+                        lastPoint.slope = 0;
+                    }
                     lastCheckpoint = uint48(testTime);
                     store_._delegateCheckpoints[delegateeAddress].push(lastCheckpoint, lastPoint);
                 }
@@ -451,14 +461,20 @@ library EscrowDelegateCheckpoints {
                 dSlope = store_.globalSlopeChanges[testTime];
             }
             if (dSlope != 0) {
-                lastGlobal.bias -= ((lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128()) / PRECISION);
+                lastGlobal.bias -= lastGlobal.slope * uint256(testTime - lastCheckpointTs).toInt128();
                 lastGlobal.slope += dSlope;
+                if (lastGlobal.bias < 0) {
+                    lastGlobal.bias = 0;
+                }
+                if (lastGlobal.slope < 0) {
+                    lastGlobal.slope = 0;
+                }
                 lastCheckpointTs = uint48(testTime);
             }
             if (testTime > maxTime) break;
         }
 
-        int128 change = (lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128()) / PRECISION;
+        int128 change = lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128();
         lastGlobal.bias = lastGlobal.bias < change ? int128(0) : lastGlobal.bias - change;
 
         return lastGlobal;
@@ -483,7 +499,7 @@ library EscrowDelegateCheckpoints {
             .upperLookupRecent(clockTime);
         if (!exists) return 0;
         if (lastPoint.permanent != 0) return lastPoint.permanent.toUint256();
-        int128 change = (((lastPoint.slope * uint256(clockTime - ts).toInt128()) / PRECISION));
+        int128 change = ((lastPoint.slope * uint256(clockTime - ts).toInt128()));
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
         return lastPoint.bias.toUint256();
     }
