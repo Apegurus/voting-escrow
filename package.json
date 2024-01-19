@@ -1,6 +1,6 @@
 {
-  "name": "@defifofum/hardhat-template",
-  "version": "3.2.0",
+  "name": "@Apegurus/voting-escrow",
+  "version": "0.0.1",
   "description": "Solidity Smart Contract development template using modern Web3 frameworks/tools including Hardhat, Typechain, Foundry and more.",
   "main": "./dist/index.js",
   "files": [
@@ -47,15 +47,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DeFiFoFum/hardhat-template.git"
+    "url": "git+https://github.com/Apegurus/voting-escrow.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/DeFiFoFum/hardhat-template/issues"
+    "url": "https://github.com/Apegurus/voting-escrow/issues"
   },
-  "homepage": "https://github.com/DeFiFoFum/hardhat-template#readme",
+  "homepage": "https://github.com/Apegurus/voting-escrow#readme",
   "resolutions": {
     "got": "^11.8.5",
     "node-fetch": "^2.6.7",
