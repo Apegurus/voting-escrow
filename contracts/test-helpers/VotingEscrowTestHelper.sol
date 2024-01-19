@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.23;
+pragma solidity 0.8.19;
 
 import {VotingEscrow} from "../VotingEscrow.sol";
+import {EscrowDelegateCheckpoints} from "../libraries/EscrowDelegateCheckpoints.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 
 contract VotingEscrowTestHelper {
@@ -15,14 +16,14 @@ contract VotingEscrowTestHelper {
     }
 
     function createManyLocks(
-        int128[] memory _value,
+        uint256[] memory _value,
         uint256[] memory _lockDuration,
         address[] memory _to,
-        address[] memory _delegtatee,
+        address[] memory _delegatee,
         bool[] memory _permanent
     ) public {
         for (uint256 i = 0; i < _value.length; i++) {
-            votingEscrow.createDelegatedLockFor(_value[i], _lockDuration[i], _to[i], _delegtatee[i], _permanent[i]);
+            votingEscrow.createDelegatedLockFor(_value[i], _lockDuration[i], _to[i], _delegatee[i], _permanent[i]);
         }
     }
 
@@ -32,12 +33,12 @@ contract VotingEscrowTestHelper {
     /// @param _tokenId NFT for lock
     /// @param _timestamp Epoch time to return voting power at
     /// @return balance ser voting power
-    function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (int128 balance) {
-        (int128 amount, uint256 startTime, uint256 endTime, bool isPermanent) = votingEscrow.lockDetails(_tokenId);
+    function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256 balance) {
+        (uint256 amount, uint256 startTime, uint256 endTime, bool isPermanent) = votingEscrow.lockDetails(_tokenId);
         if (isPermanent) return amount;
         if (startTime > _timestamp) return 0;
         if (endTime < _timestamp) return 0;
-        int128 slope = (amount * votingEscrow.PRECISION()) / votingEscrow.MAX_TIME();
-        balance = (slope * (endTime - _timestamp).toInt128()) / votingEscrow.PRECISION();
+        int128 slope = amount.toInt128() / EscrowDelegateCheckpoints.MAX_TIME;
+        balance = (slope * ((endTime).toInt128() - (_timestamp).toInt128())).toUint256();
     }
 }

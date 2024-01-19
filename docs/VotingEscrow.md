@@ -2,7 +2,11 @@
 
 ## VotingEscrow
 
-_This contract is used for locking tokens and voting._
+_This contract is used for locking tokens and voting.
+
+- tokenIds always have a delegatee, with the owner being the default (see createLock)
+- On transfers, delegation is reset. (See _update)
+-_
 
 ### token
 
@@ -15,7 +19,7 @@ The token being locked
 ### supply
 
 ```solidity
-int128 supply
+uint256 supply
 ```
 
 Total locked supply
@@ -36,6 +40,14 @@ mapping(address => uint256) nonces
 
 A record of states for signing / validating signatures
 
+### VotesExpiredSignature
+
+```solidity
+error VotesExpiredSignature(uint256 expiry)
+```
+
+_OpenZeppelin v5 IVotes error_
+
 ### constructor
 
 ```solidity
@@ -44,14 +56,28 @@ constructor(string _name, string _symbol, string version, contract IERC20 mainTo
 
 _Initializes the contract by setting a `name`, `symbol`, `version` and `mainToken`._
 
-### _update
+### checkAuthorized
 
 ```solidity
-function _update(address to, uint256 tokenId, address auth) internal virtual returns (address)
+modifier checkAuthorized(uint256 _tokenId)
 ```
 
-_See {ERC721-_update}. Adjusts votes when tokens are transferred.
-Emits a {IVotes-DelegateVotesChanged} event._
+### supportsInterface
+
+```solidity
+function supportsInterface(bytes4 interfaceId) public view virtual returns (bool supported)
+```
+
+_See {IERC165-supportsInterface}._
+
+### _beforeTokenTransfer
+
+```solidity
+function _beforeTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal virtual
+```
+
+_See {IERC721-_beforeTokenTransfer}.
+Clears the approval of a given `tokenId` when the token is transferred or burned._
 
 ### lockDetails
 
@@ -72,7 +98,7 @@ tracker of current NFT id
 ### _createLock
 
 ```solidity
-function _createLock(int128 value, uint256 duration, address to, bool permanent) internal virtual returns (uint256)
+function _createLock(uint256 value, uint256 duration, address to, address delegatee, bool permanent) internal virtual returns (uint256)
 ```
 
 Creates a new vesting NFT and mints it
@@ -83,15 +109,16 @@ _Token amount should be approved to be transferred by this contract before execu
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| value | int128 | The total assets to be locked over time |
+| value | uint256 | The total assets to be locked over time |
 | duration | uint256 | Duration in seconds of the lock |
 | to | address | The receiver of the lock |
+| delegatee | address |  |
 | permanent | bool |  |
 
 ### createLock
 
 ```solidity
-function createLock(int128 _value, uint256 _lockDuration, bool _permanent) external returns (uint256)
+function createLock(uint256 _value, uint256 _lockDuration, bool _permanent) external returns (uint256)
 ```
 
 Creates a lock for the sender
@@ -100,7 +127,7 @@ Creates a lock for the sender
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _value | int128 | The total assets to be locked over time |
+| _value | uint256 | The total assets to be locked over time |
 | _lockDuration | uint256 | Duration in seconds of the lock |
 | _permanent | bool | Whether the lock is permanent or not |
 
@@ -113,7 +140,7 @@ Creates a lock for the sender
 ### createLockFor
 
 ```solidity
-function createLockFor(int128 _value, uint256 _lockDuration, address _to, bool _permanent) external returns (uint256)
+function createLockFor(uint256 _value, uint256 _lockDuration, address _to, bool _permanent) external returns (uint256)
 ```
 
 Creates a lock for a specified address
@@ -122,9 +149,33 @@ Creates a lock for a specified address
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _value | int128 | The total assets to be locked over time |
+| _value | uint256 | The total assets to be locked over time |
 | _lockDuration | uint256 | Duration in seconds of the lock |
 | _to | address | The receiver of the lock |
+| _permanent | bool | Whether the lock is permanent or not |
+
+#### Return Values
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| [0] | uint256 | The id of the newly created token |
+
+### createDelegatedLockFor
+
+```solidity
+function createDelegatedLockFor(uint256 _value, uint256 _lockDuration, address _to, address _delegatee, bool _permanent) external returns (uint256)
+```
+
+Creates a lock for a specified address
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| _value | uint256 | The total assets to be locked over time |
+| _lockDuration | uint256 | Duration in seconds of the lock |
+| _to | address | The receiver of the lock |
+| _delegatee | address | The receiver of the lock |
 | _permanent | bool | Whether the lock is permanent or not |
 
 #### Return Values
@@ -158,17 +209,19 @@ Updates the checkpoint for a delegatee
 ### _updateLock
 
 ```solidity
-function _updateLock(uint256 _tokenId, int128 _value, uint256 _unlockTime, struct IVotingEscrow.LockDetails _oldLocked, bool isPermanent) internal
+function _updateLock(uint256 _tokenId, uint256 _increasedValue, uint256 _unlockTime, struct IVotingEscrow.LockDetails _oldLocked, bool isPermanent) internal
 ```
 
 Deposit & update lock tokens for a user
+
+_The supply is increased by the _value amount_
 
 #### Parameters
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | _tokenId | uint256 | NFT that holds lock |
-| _value | int128 | Amount to deposit |
+| _increasedValue | uint256 | Amount to deposit |
 | _unlockTime | uint256 | New time when to unlock the tokens, or 0 if unchanged |
 | _oldLocked | struct IVotingEscrow.LockDetails | Previous locked amount / timestamp |
 | isPermanent | bool |  |
@@ -188,21 +241,6 @@ Record global and per-user data to checkpoints. Used by VotingEscrow system.
 | _tokenId | uint256 | NFT token ID. No user checkpoint if 0 |
 | _oldLocked | struct IVotingEscrow.LockDetails | Previous locked amount / end lock time for the user |
 | _newLocked | struct IVotingEscrow.LockDetails | New locked amount / end lock time for the user |
-
-### delegate
-
-```solidity
-function delegate(uint256 delegator, address delegatee) external
-```
-
-Delegates votes to a specified address
-
-#### Parameters
-
-| Name | Type | Description |
-| ---- | ---- | ----------- |
-| delegator | uint256 | The id of the token delegating the votes |
-| delegatee | address | The address receiving the votes |
 
 ### increaseAmount
 
@@ -298,7 +336,7 @@ Merges two tokens together
 ### split
 
 ```solidity
-function split(uint256[] amounts, uint256 _tokenId) external
+function split(uint256[] _weights, uint256 _tokenId) external
 ```
 
 Splits a token into multiple tokens
@@ -307,7 +345,7 @@ Splits a token into multiple tokens
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| amounts | uint256[] | The percentages to split the token into |
+| _weights | uint256[] | The percentages to split the token into |
 | _tokenId | uint256 | The id of the token to split |
 
 ### balanceOfNFT
@@ -333,7 +371,7 @@ _See {IERC721Enumerable-totalSupply}._
 ### getVotes
 
 ```solidity
-function getVotes(address delegateeAddress) external view returns (uint256)
+function getVotes(address account) external view returns (uint256)
 ```
 
 Gets the votes for a delegatee
@@ -342,7 +380,7 @@ Gets the votes for a delegatee
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| delegateeAddress | address | The address of the delegatee |
+| account | address | The address of the delegatee |
 
 #### Return Values
 
@@ -353,7 +391,7 @@ Gets the votes for a delegatee
 ### getPastVotes
 
 ```solidity
-function getPastVotes(address _delegateeAddress, uint256 _timePoint) external view returns (uint256)
+function getPastVotes(address account, uint256 timepoint) external view returns (uint256)
 ```
 
 Gets the past votes for a delegatee at a specific time point
@@ -362,8 +400,8 @@ Gets the past votes for a delegatee at a specific time point
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| _delegateeAddress | address | The address of the delegatee |
-| _timePoint | uint256 | The time point to get the votes at |
+| account | address | The address of the delegatee |
+| timepoint | uint256 | The time point to get the votes at |
 
 #### Return Values
 
@@ -394,59 +432,81 @@ Gets the total supply at a specific time point
 ### delegate
 
 ```solidity
-function delegate(address account) external
+function delegate(address delegatee) external
 ```
 
-Delegates votes to an account
+Delegates votes to a delegatee
 
 #### Parameters
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| account | address | The account to delegate votes to |
-
-### _delegate
-
-```solidity
-function _delegate(address sender, address account) internal
-```
-
-Delegates votes from a sender to an account
-
-#### Parameters
-
-| Name | Type | Description |
-| ---- | ---- | ----------- |
-| sender | address | The sender of the votes |
-| account | address | The account to delegate votes to |
+| delegatee | address | The account to delegate votes to |
 
 ### delegates
 
 ```solidity
-function delegates(address delegatee) external view returns (address)
+function delegates(address account) external view returns (address)
 ```
 
 Gets the delegate of a delegatee
 
-_This function is merely a placeholder for ERC5801 compatibility
- an account can have multiple delegates in this contract._
+_This function implements IVotes interface.
+ An account can have multiple delegates in this contract. If multiple
+ different delegates are found, this function returns address(1) to
+ indicate that there is not a single unique delegate._
 
 #### Parameters
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| delegatee | address | The delegatee to get the delegate of |
+| account | address | The delegatee to get the delegate of |
 
 #### Return Values
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| [0] | address | The delegate of the delegatee |
+| [0] | address | The delegate of the delegatee, or address(1) if multiple different delegates are found |
 
-### accountDelegates
+### delegate
 
 ```solidity
-function accountDelegates(address delegatee) external view returns (address[])
+function delegate(uint256 _tokenId, address delegatee) external
+```
+
+Delegates votes from a specific lock to a delegatee
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| _tokenId | uint256 | The ID of the lock token delegating the votes |
+| delegatee | address | The address to which the votes are being delegated |
+
+### getLockDelegatee
+
+```solidity
+function getLockDelegatee(uint256 tokenId) external view returns (address)
+```
+
+Gets the delegatee of a given lock
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| tokenId | uint256 | The ID of the lock token |
+
+#### Return Values
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| [0] | address | The address of the delegatee for the specified token |
+
+### getAccountDelegates
+
+```solidity
+function getAccountDelegates(address account) external view returns (address[])
 ```
 
 Gets all delegates of a delegatee
@@ -455,13 +515,34 @@ Gets all delegates of a delegatee
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| delegatee | address | The delegatee to get the delegates of |
+| account | address | The delegatee to get the delegates of |
 
 #### Return Values
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | [0] | address[] | An array of all delegates of the delegatee |
+
+### getLockDelegateeAtTime
+
+```solidity
+function getLockDelegateeAtTime(uint256 tokenId, uint48 timestamp) external view returns (address)
+```
+
+Public function to get the delegatee of a lock
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| tokenId | uint256 | The ID of the token |
+| timestamp | uint48 | The timestamp to get the delegate at |
+
+#### Return Values
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| [0] | address | The address of the delegate |
 
 ### delegateBySig
 
@@ -481,6 +562,57 @@ Delegates votes by signature
 | v | uint8 | The recovery byte of the signature |
 | r | bytes32 | Half of the ECDSA signature pair |
 | s | bytes32 | Half of the ECDSA signature pair |
+
+### _delegate
+
+```solidity
+function _delegate(address delegator, address delegatee) internal
+```
+
+Delegates votes from an owner to an delegatee
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| delegator | address | The owner of the tokenId delegating votes |
+| delegatee | address | The account to delegate votes to |
+
+### ERC6372InconsistentClock
+
+```solidity
+error ERC6372InconsistentClock()
+```
+
+_The clock was incorrectly modified._
+
+### clock
+
+```solidity
+function clock() public view virtual returns (uint48)
+```
+
+Clock used for flagging checkpoints.
+
+#### Return Values
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| [0] | uint48 | Current timestamp |
+
+### CLOCK_MODE
+
+```solidity
+function CLOCK_MODE() public view virtual returns (string)
+```
+
+Machine-readable description of the clock as specified in EIP-6372.
+
+#### Return Values
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| [0] | string | The clock mode |
 
 ### vestedPayoutAtTime
 

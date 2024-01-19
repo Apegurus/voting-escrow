@@ -1,7 +1,7 @@
 /**
  * Set the Solidity compiler versions
  */
-const SOLC_COMPILER_VERSIONS = ['0.8.23']
+const SOLC_COMPILER_VERSIONS = ['0.8.19']
 
 /**
  *
@@ -28,7 +28,7 @@ module.exports = {
     'reason-string': ['warn', { maxLength: 50 }], // Revert reason length
     'func-param-name-mixedcase': 'error',
     'modifier-name-mixedcase': 'error',
-    'private-vars-leading-underscore': ['error', { strict: false }],
+    'private-vars-leading-underscore': ['warn', { strict: false }],
     ordering: 'warn',
 
     // Security Rules

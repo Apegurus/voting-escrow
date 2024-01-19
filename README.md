@@ -1,38 +1,15 @@
-# Hardhat w/ Foundry Template - _by [DeFiFoFum](https://github.com/defifofum)_ <img src="https://avatars.githubusercontent.com/u/78645267?v=4" alt="DeFiFoFum Avatar" width="25px">
-<!-- 
-  FIXME: Update `DeFiFoFum/hardhat-template` based on current repo 
-  1. Find All (CMD/CTRL + SHIFT + F)
-  2. Search for: DeFiFoFum/hardhat-template
-  3. Replace with <user>/<your-repo>
-  -->
-[![lint & test](https://github.com/DeFiFoFum/hardhat-template/actions/workflows/lint-test.yml/badge.svg)](https://github.com/DeFiFoFum/hardhat-template/actions/workflows/lint-test.yml)
+# Voting Escrow V2 w/ Delegation
+
+[![lint & test](https://github.com/Apegurus/voting-escrow/actions/workflows/lint-test.yml/badge.svg)](https://github.com/Apegurus/voting-escrow/actions/workflows/lint-test.yml)
 [![Docs](https://img.shields.io/badge/docs-%F0%9F%93%84-yellow)](./docs/)
 [![License](https://img.shields.io/badge/License-GPLv3-green.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Solidity Smart Contract development template using modern Web3 frameworks/tools including Hardhat, Typechain and more.
+Voting Escrow based off of the popular Curve Voting Escrow contract. Lock protocol tokens for a period of time and receive voting power in return. Voting Escrow V2 adds delegation to the mix, which isn't available in the original contract, among other improvements and standards.
 
-## Features
+**V2 Additions**
 
-_**For testing features see [README-testing.md](./README-testing.md)**_
-
-- [Foundry Smart Contract Development ToolChain](https://book.getfoundry.sh/)
-  - See [README-foundry.md](./README-foundry.md) for more info.
-- Contract Support
-  - [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/): Trusted smart contract standards
-  - [Openzeppelin Contracts Upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable): Upgradeable smart contract support
-- Typescript
-  - [Typechain](https://www.npmjs.com/package/typechain): Generate smart contract typings for Ethers during
-- Docs
-  - [Hardhat Docgen](https://www.npmjs.com/package/hardhat-docgen): Generate a static documentation site from NatSpec comments automatically on compilation with Hardhat.
-compilation.
-- Linting
-  - [Prettier](https://prettier.io/): Most popular opinionated code formatter.
-    - [Prettier Config](https://prettier.io/docs/en/configuration.html)
-  - [Prettier Solidity plugin](https://www.npmjs.com/package/prettier-plugin-solidity): A Prettier plugin for automatically formatting your Solidity code.
-  - [Solhint](https://www.npmjs.com/package/solhint): Open source project for linting Solidity code. This project provides both Security and Style Guide validations.
-    - [solhint.config.ts](./solhint.config.js) is full featured and support Solidity style guide recommendations.
-  - [Hardhat Contract Sizer](https://www.npmjs.com/package/hardhat-contract-sizer)
-- [Build/Publish as NPM Package](#buildpublish-as-npm-package): This repo is setup to build important files into a publishable NPM package. (See below for more info)
+- [ERC-5725](https://eips.ethereum.org/EIPS/eip-5725) Transferrable Vesting NFT: Voting Escrow V2 is ERC-5725 compliant which allows these tokens to be easily integrated into NFT marketplaces and other platforms.
+- [ERC-6372](https://eips.ethereum.org/EIPS/eip-6372): Contract Clock
 
 ## Deployment and Verification
 
