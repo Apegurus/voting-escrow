@@ -5,7 +5,7 @@ import { TASK_TEST } from 'hardhat/builtin-tasks/task-names'
 import '@nomicfoundation/hardhat-toolbox'
 import '@nomiclabs/hardhat-etherscan'
 import 'solidity-coverage'
-import 'hardhat-docgen'
+import 'solidity-docgen'
 import 'hardhat-contract-sizer'
 import '@openzeppelin/hardhat-upgrades'
 import './plugins/abiPlugins'
@@ -149,11 +149,14 @@ function getSolcUserConfig(): SolcUserConfig[] {
   })
 }
 
-const config: HardhatUserConfig = {
+const config: any = {
   solidity: { compilers: getSolcUserConfig() },
   networks: {
     ...networkConfig,
     hardhat: {
+      accounts: {
+        count: 400,
+      },
       gas: 'auto',
       gasPrice: 'auto',
     },
@@ -165,11 +168,16 @@ const config: HardhatUserConfig = {
     currency: 'USD',
     excludeContracts: [],
   },
+  // docgen: {
+  //   path: './docs',
+  //   clear: true,
+  //   // TODO: Enable for each compile (disabled for template to avoid unnecessary generation)
+  //   runOnCompile: false,
+  // },
   docgen: {
-    path: './docs',
-    clear: true,
-    // TODO: Enable for each compile (disabled for template to avoid unnecessary generation)
-    runOnCompile: false,
+    outputDir: './docs',
+    pages: 'items',
+    exclude: ['Migrations.sol', '/mocks'],
   },
   typechain: {
     // outDir: 'src/types', // defaults to './typechain-types/'
