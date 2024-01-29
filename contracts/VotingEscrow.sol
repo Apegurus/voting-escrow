@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721, ERC721Enumerable, IERC165} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -17,7 +18,7 @@ import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
 import {Time} from "./libraries/Time.sol";
 
-import {EscrowDelegateCheckpoints} from "./libraries/EscrowDelegateCheckpoints.sol";
+import {EscrowDelegateCheckpoints, Checkpoints} from "./libraries/EscrowDelegateCheckpoints.sol";
 import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
 
 /**
@@ -35,7 +36,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     using EscrowDelegateCheckpoints for EscrowDelegateCheckpoints.EscrowDelegateStore;
 
     /// @notice The token being locked
-    IERC20 public token;
+    IERC20 public _token;
     /// @notice Total locked supply
     uint256 public supply;
 
@@ -57,7 +58,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         string memory version,
         IERC20 mainToken
     ) ERC721(_name, _symbol) EIP712(_name, version) {
-        token = mainToken;
+        _token = mainToken;
     }
 
     modifier checkAuthorized(uint256 _tokenId) {
@@ -75,7 +76,9 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /**
      * @dev See {IERC165-supportsInterface}.
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool supported) {
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC5725, IERC165) returns (bool supported) {
         return interfaceId == type(IVotingEscrow).interfaceId || super.supportsInterface(interfaceId);
     }
 
@@ -97,7 +100,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
                 (address oldDelegatee, address newDelegatee) = edStore.delegate(
                     tokenId,
                     to,
-                    lockDetails[tokenId].endTime
+                    _lockDetails[tokenId].endTime
                 );
                 emit DelegateChanged(to, oldDelegatee, newDelegatee);
                 emit LockDelegateChanged(tokenId, to, oldDelegatee, newDelegatee);
@@ -110,7 +113,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      */
 
     /// @notice maps the vesting data with tokenIds
-    mapping(uint256 => LockDetails) public lockDetails;
+    mapping(uint256 => LockDetails) public _lockDetails;
 
     /// @notice tracker of current NFT id
     uint256 public totalNftsMinted = 0;
@@ -140,9 +143,9 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         }
 
         _mint(to, newTokenId);
-        lockDetails[newTokenId].startTime = block.timestamp;
+        _lockDetails[newTokenId].startTime = block.timestamp;
         /// @dev Checkpoint created in _updateLock
-        _updateLock(newTokenId, value, unlockTime, lockDetails[newTokenId], permanent);
+        _updateLock(newTokenId, value, unlockTime, _lockDetails[newTokenId], permanent);
         edStore.delegate(newTokenId, delegatee, unlockTime);
         emit LockCreated(newTokenId, delegatee, value, unlockTime, permanent);
         emit DelegateChanged(to, address(0), delegatee);
@@ -204,8 +207,12 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /**
      * @notice Updates the global checkpoint
      */
-    function globalCheckpoint() external nonReentrant {
+    function globalCheckpoint() public nonReentrant {
         return edStore.globalCheckpoint();
+    }
+
+    function checkpoint() external override {
+        globalCheckpoint();
     }
 
     /**
@@ -250,7 +257,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
             newLocked.endTime = 0;
             newLocked.isPermanent = true;
         }
-        lockDetails[_tokenId] = newLocked;
+        _lockDetails[_tokenId] = newLocked;
         emit LockUpdated(_tokenId, _increasedValue, _unlockTime, isPermanent);
 
         // Possibilities:
@@ -261,7 +268,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         _checkpointLock(_tokenId, _oldLocked, newLocked);
 
         if (_increasedValue != 0) {
-            token.safeTransferFrom(_msgSender(), address(this), _increasedValue);
+            _token.safeTransferFrom(_msgSender(), address(this), _increasedValue);
         }
 
         emit SupplyUpdated(supply, supplyBefore + _increasedValue);
@@ -293,7 +300,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function increaseAmount(uint256 _tokenId, uint256 _value) external nonReentrant {
         if (_value == 0) revert ZeroAmount();
 
-        IVotingEscrow.LockDetails memory oldLocked = lockDetails[_tokenId];
+        IVotingEscrow.LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (oldLocked.amount <= 0) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
@@ -311,7 +318,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         uint256 _lockDuration,
         bool _permanent
     ) external nonReentrant checkAuthorized(_tokenId) {
-        LockDetails memory oldLocked = lockDetails[_tokenId];
+        LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (oldLocked.isPermanent) revert PermanentLock();
 
         uint256 unlockTime;
@@ -332,7 +339,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to unlock
      */
     function unlockPermanent(uint256 _tokenId) external nonReentrant checkAuthorized(_tokenId) {
-        LockDetails memory newLocked = lockDetails[_tokenId];
+        LockDetails memory newLocked = _lockDetails[_tokenId];
         if (!newLocked.isPermanent) revert NotPermanentLock();
 
         // Set the end time to the maximum possible time
@@ -341,8 +348,8 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         newLocked.isPermanent = false;
 
         // Update the lock details
-        _checkpointLock(_tokenId, lockDetails[_tokenId], newLocked);
-        lockDetails[_tokenId] = newLocked;
+        _checkpointLock(_tokenId, _lockDetails[_tokenId], newLocked);
+        _lockDetails[_tokenId] = newLocked;
 
         emit UnlockPermanent(_tokenId, _msgSender(), newLocked.endTime);
     }
@@ -352,7 +359,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to claim the payout for
      */
     function _claim(uint256 _tokenId) internal validToken(_tokenId) nonReentrant checkAuthorized(_tokenId) {
-        IVotingEscrow.LockDetails memory oldLocked = lockDetails[_tokenId];
+        IVotingEscrow.LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (oldLocked.isPermanent) revert PermanentLock();
 
         uint256 amountClaimed = claimablePayout(_tokenId);
@@ -361,13 +368,13 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         // Burn the NFT
         _burn(_tokenId);
         // Reset the lock details
-        lockDetails[_tokenId] = IVotingEscrow.LockDetails(0, 0, 0, false);
+        _lockDetails[_tokenId] = IVotingEscrow.LockDetails(0, 0, 0, false);
         // Update the total supply
         uint256 supplyBefore = supply;
         supply -= amountClaimed;
 
         // Update the lock details
-        _checkpointLock(_tokenId, oldLocked, lockDetails[_tokenId]);
+        _checkpointLock(_tokenId, oldLocked, _lockDetails[_tokenId]);
 
         /// @notice ERC-5725 event
         emit PayoutClaimed(_tokenId, msg.sender, amountClaimed);
@@ -396,10 +403,10 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function merge(uint256 _from, uint256 _to) external nonReentrant checkAuthorized(_from) checkAuthorized(_to) {
         if (_from == _to) revert SameNFT();
 
-        IVotingEscrow.LockDetails memory oldLockedTo = lockDetails[_to];
+        IVotingEscrow.LockDetails memory oldLockedTo = _lockDetails[_to];
         if (oldLockedTo.endTime <= block.timestamp && !oldLockedTo.isPermanent) revert LockExpired();
 
-        IVotingEscrow.LockDetails memory oldLockedFrom = lockDetails[_from];
+        IVotingEscrow.LockDetails memory oldLockedFrom = _lockDetails[_from];
         if (oldLockedFrom.isPermanent) revert PermanentLock();
         // Calculate the new end time
         uint256 end = oldLockedFrom.endTime >= oldLockedTo.endTime ? oldLockedFrom.endTime : oldLockedTo.endTime;
@@ -407,9 +414,9 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         // Burn the token being merged from
         _burn(_from);
         // Reset the lock details
-        lockDetails[_from] = LockDetails(0, 0, 0, false);
+        _lockDetails[_from] = LockDetails(0, 0, 0, false);
         // Update the lock details
-        _checkpointLock(_from, oldLockedFrom, lockDetails[_from]);
+        _checkpointLock(_from, oldLockedFrom, _lockDetails[_from]);
 
         // Calculate the new lock details
         LockDetails memory newLockedTo;
@@ -421,7 +428,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
 
         // Update the lock details
         _checkpointLock(_to, oldLockedTo, newLockedTo);
-        lockDetails[_to] = newLockedTo;
+        _lockDetails[_to] = newLockedTo;
         emit LockMerged(_from, _to, newLockedTo.amount, end, newLockedTo.isPermanent);
     }
 
@@ -431,7 +438,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to split
      */
     function split(uint256[] memory _weights, uint256 _tokenId) external nonReentrant checkAuthorized(_tokenId) {
-        LockDetails memory locked = lockDetails[_tokenId];
+        LockDetails memory locked = _lockDetails[_tokenId];
         uint256 currentTime = block.timestamp;
         /// @dev Pulling directly from locked struct to avoid stack-too-deep
         if (locked.endTime <= currentTime && !locked.isPermanent) revert LockExpired();
@@ -447,15 +454,11 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         }
 
         // remove old data
-        lockDetails[_tokenId] = LockDetails(0, 0, 0, false);
-        _checkpointLock(_tokenId, locked, lockDetails[_tokenId]);
+        _lockDetails[_tokenId] = LockDetails(0, 0, 0, false);
+        _checkpointLock(_tokenId, locked, _lockDetails[_tokenId]);
         _burn(_tokenId);
 
-        uint256 duration = locked.isPermanent
-            ? 0
-            : locked.endTime > currentTime
-                ? locked.endTime - currentTime
-                : 0;
+        uint256 duration = locked.isPermanent ? 0 : locked.endTime > currentTime ? locked.endTime - currentTime : 0;
 
         for (uint256 i = 0; i < _weights.length; i++) {
             uint256 value = (uint256(int256(locked.amount)) * _weights[i]) / totalWeight;
@@ -476,7 +479,18 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         return edStore.getAdjustedEscrowBias(_tokenId, _timestamp);
     }
 
-    function totalSupply() public view override returns (uint256) {
+    function getPastEscrowPoint(
+        uint256 _tokenId,
+        uint256 _timestamp
+    ) external view override returns (Checkpoints.Point memory, uint48) {
+        return edStore.getAdjustedEscrow(_tokenId, _timestamp);
+    }
+
+    function getFirstEscrowPoint(uint256 _tokenId) external view override returns (Checkpoints.Point memory, uint48) {
+        return edStore.getFirstEscrowPoint(_tokenId);
+    }
+
+    function totalSupply() public view override(ERC721Enumerable, IERC721Enumerable) returns (uint256) {
         return edStore.getAdjustedGlobalVotes(block.timestamp.toUint48());
     }
 
@@ -556,7 +570,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         (address fromDelegatee, address toDelegatee) = edStore.delegate(
             _tokenId,
             delegatee,
-            lockDetails[_tokenId].endTime
+            _lockDetails[_tokenId].endTime
         );
         emit LockDelegateChanged(_tokenId, _msgSender(), fromDelegatee, toDelegatee);
     }
@@ -591,7 +605,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param timestamp The timestamp to get the delegate at
      * @return The address of the delegate
      */
-    function getLockDelegateeAtTime(uint256 tokenId, uint48 timestamp) external view returns (address) {
+    function delegates(uint256 tokenId, uint48 timestamp) external view returns (address) {
         return edStore.getEscrowDelegateeAtTime(tokenId, timestamp);
     }
 
@@ -637,7 +651,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
             (address oldDelegate, address newDelegate) = edStore.delegate(
                 tokenId,
                 delegatee,
-                lockDetails[tokenId].endTime
+                _lockDetails[tokenId].endTime
             );
             emit LockDelegateChanged(tokenId, delegator, oldDelegate, newDelegate);
             /// @dev Hacky way to check if the delegatee is the same for all locks
@@ -703,27 +717,39 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @dev See {ERC5725}.
      */
     function _payoutToken(uint256 /*tokenId*/) internal view override returns (address) {
-        return address(token);
+        return address(_token);
     }
 
     /**
      * @dev See {ERC5725}.
      */
     function _payout(uint256 tokenId) internal view override returns (uint256) {
-        return lockDetails[tokenId].amount;
+        return _lockDetails[tokenId].amount;
     }
 
     /**
      * @dev See {ERC5725}.
      */
     function _startTime(uint256 tokenId) internal view override returns (uint256) {
-        return lockDetails[tokenId].startTime;
+        return _lockDetails[tokenId].startTime;
     }
 
     /**
      * @dev See {ERC5725}.
      */
     function _endTime(uint256 tokenId) internal view override returns (uint256) {
-        return lockDetails[tokenId].endTime;
+        return _lockDetails[tokenId].endTime;
+    }
+
+    function token() external view returns (IERC20) {
+        return _token;
+    }
+
+    function lockDetails(uint256 _tokenId) external view returns (LockDetails memory) {
+        return _lockDetails[_tokenId];
+    }
+
+    function isApprovedOrOwner(address user, uint tokenId) external view returns (bool) {
+        return _isAuthorized(ownerOf(tokenId), user, tokenId);
     }
 }
