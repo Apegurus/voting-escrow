@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // This file was derived from OpenZeppelin Contracts (last updated v5.0.0) (utils/structs/Checkpoints.sol)
 
-pragma solidity 0.8.19;
+pragma solidity ^0.8.0;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
