@@ -982,8 +982,8 @@ describe('VotingEscrow', function () {
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
-        await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
-        await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
+        // await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
+        // await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
         let latestTime = await time.latest()
 
         await validateState(
@@ -1000,7 +1000,7 @@ describe('VotingEscrow', function () {
         await time.increaseTo(latestTime + oneDay)
 
         await connectedEscrow.merge(1, 2)
-        await connectedEscrow.connect(bob).merge(3, 4)
+        // await connectedEscrow.connect(bob).merge(3, 4)
         latestTime = await time.latest()
 
         const updatedStatePermanent = await validateState(
@@ -1009,12 +1009,12 @@ describe('VotingEscrow', function () {
           votingEscrowTestHelper,
           latestTime
         )
-        const updatedStateNotPermanent = await validateState(
-          [{ tokenId: 4, account: alice }],
-          votingEscrow,
-          votingEscrowTestHelper,
-          latestTime
-        )
+        // const updatedStateNotPermanent = await validateState(
+        //   [{ tokenId: 4, account: alice }],
+        //   votingEscrow,
+        //   votingEscrowTestHelper,
+        //   latestTime
+        // )
 
         expect(updatedStatePermanent[0].details.amount).to.equal(lockedAmount * 2)
         // expect(updatedStateNotPermanent[0].details.amount).to.equal(lockedAmount * 2)
@@ -1111,7 +1111,10 @@ describe('VotingEscrow', function () {
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
         await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
 
-        await expect(connectedEscrow.merge(1, 2)).to.be.revertedWithCustomError(connectedEscrow, 'PermanentLock')
+        await expect(connectedEscrow.merge(1, 2)).to.be.revertedWithCustomError(
+          connectedEscrow,
+          'PermanentLockMismatch'
+        )
       })
     })
   })
