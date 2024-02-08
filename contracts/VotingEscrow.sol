@@ -458,7 +458,11 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         _checkpointLock(_tokenId, locked, _lockDetails[_tokenId]);
         _burn(_tokenId);
 
-        uint256 duration = locked.isPermanent ? 0 : locked.endTime > currentTime ? locked.endTime - currentTime : 0;
+        uint256 duration = locked.isPermanent
+            ? 0
+            : locked.endTime > currentTime
+                ? locked.endTime - currentTime
+                : 0;
 
         for (uint256 i = 0; i < _weights.length; i++) {
             uint256 value = (uint256(int256(locked.amount)) * _weights[i]) / totalWeight;

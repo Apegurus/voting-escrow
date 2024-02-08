@@ -9,12 +9,7 @@ import {IERC5725Upgradeable, IERC165Upgradeable} from "./IERC5725Upgradeable.sol
 import {IERC721Errors} from "../interfaces/IERC721Errors.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-abstract contract ERC5725Upgradeable is
-    Initializable,
-    IERC5725Upgradeable,
-    ERC721EnumerableUpgradeable,
-    IERC721Errors
-{
+abstract contract ERC5725Upgradeable is Initializable, IERC5725Upgradeable, ERC721EnumerableUpgradeable, IERC721Errors {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     /// @dev mapping for claimed payouts
@@ -131,7 +126,9 @@ abstract contract ERC5725Upgradeable is
     /**
      * @dev See {IERC5725Upgradeable}.
      */
-    function payoutToken(uint256 tokenId) public view override(IERC5725Upgradeable) validToken(tokenId) returns (address token) {
+    function payoutToken(
+        uint256 tokenId
+    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (address token) {
         return _payoutToken(tokenId);
     }
 
