@@ -407,7 +407,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         if (oldLockedTo.endTime <= block.timestamp && !oldLockedTo.isPermanent) revert LockExpired();
 
         IVotingEscrow.LockDetails memory oldLockedFrom = _lockDetails[_from];
-        if (oldLockedFrom.isPermanent) revert PermanentLock();
+        if (oldLockedFrom.isPermanent != oldLockedTo.isPermanent) revert PermanentLockMismatch();
         // Calculate the new end time
         uint256 end = oldLockedFrom.endTime >= oldLockedTo.endTime ? oldLockedFrom.endTime : oldLockedTo.endTime;
 

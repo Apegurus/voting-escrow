@@ -57,6 +57,7 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
     error NoLockFound();
     error NotPermanentLock();
     error PermanentLock();
+    error PermanentLockMismatch();
     error SameNFT();
     error SignatureExpired();
     error ZeroAmount();
