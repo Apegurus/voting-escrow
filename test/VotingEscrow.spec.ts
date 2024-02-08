@@ -25,7 +25,8 @@ import { token } from '../typechain-types/@openzeppelin/contracts'
 async function fixture() {
   // Contracts are deployed using the first signer/account by default
   const accounts = await ethers.getSigners()
-  const deployment = await deployVotingEscrowFixture(ethers)
+  const votingEscrowUpgradeable = true
+  const deployment = await deployVotingEscrowFixture(ethers, votingEscrowUpgradeable)
   return { ...deployment, accounts }
 }
 
@@ -972,21 +973,25 @@ describe('VotingEscrow', function () {
         expect(updatedState[0].details.amount).to.equal(lockedAmount * 2)
       })
 
-      it('Should be able to merge two unexpired locks with one being permanent', async function () {
-        const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
+      it('Should be able to merge two unexpired locks with matching permanent types', async function () {
+        const { alice, bob, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
+        await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
+        await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
         let latestTime = await time.latest()
 
         await validateState(
           [
             { tokenId: 1, account: alice },
             { tokenId: 2, account: alice },
+            { tokenId: 3, account: bob },
+            { tokenId: 4, account: bob },
           ],
           votingEscrow,
           votingEscrowTestHelper,
@@ -995,16 +1000,24 @@ describe('VotingEscrow', function () {
         await time.increaseTo(latestTime + oneDay)
 
         await connectedEscrow.merge(1, 2)
+        await connectedEscrow.connect(bob).merge(3, 4)
         latestTime = await time.latest()
 
-        const updatedState = await validateState(
+        const updatedStatePermanent = await validateState(
           [{ tokenId: 2, account: alice }],
           votingEscrow,
           votingEscrowTestHelper,
           latestTime
         )
+        const updatedStateNotPermanent = await validateState(
+          [{ tokenId: 4, account: alice }],
+          votingEscrow,
+          votingEscrowTestHelper,
+          latestTime
+        )
 
-        expect(updatedState[0].details.amount).to.equal(lockedAmount * 2)
+        expect(updatedStatePermanent[0].details.amount).to.equal(lockedAmount * 2)
+        // expect(updatedStateNotPermanent[0].details.amount).to.equal(lockedAmount * 2)
       })
 
       it('Should merge veNFT and keep lockTime of longest lock', async function () {

@@ -1,9 +1,16 @@
 import { time } from '@nomicfoundation/hardhat-network-helpers'
 import { ethers } from 'hardhat'
-import { VotingEscrow, VotingEscrowTestHelper__factory, VotingEscrow__factory } from '../../typechain-types'
+import {
+  VotingEscrow,
+  VotingEscrowTestHelper__factory,
+  VotingEscrowV2Upgradeable,
+  VotingEscrowV2Upgradeable__factory,
+  VotingEscrow__factory,
+} from '../../typechain-types'
+import { logger } from '../../hardhat/utils'
 
-export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
-  const [owner, alice, bob, calvin] = await _ethers.getSigners()
+export async function deployVotingEscrowFixture(_ethers: typeof ethers, upgradeable = false) {
+  const [owner, alice, bob, calvin, proxyAdminEoa] = await _ethers.getSigners()
 
   const ERC20Mock = await _ethers.getContractFactory('ERC20Mock')
   const mockToken = await ERC20Mock.deploy('100000000000000000000000000000000000', 18, 'ERC20Mock', 'MOCK')
@@ -11,12 +18,39 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers) {
   const EscrowDelegateCheckpoints = await _ethers.getContractFactory('EscrowDelegateCheckpoints')
   const escrowDelegateCheckpoints = await EscrowDelegateCheckpoints.deploy()
 
-  const VotingEscrow = (await _ethers.getContractFactory('VotingEscrow', {
-    libraries: {
-      EscrowDelegateCheckpoints: escrowDelegateCheckpoints.address,
-    },
-  })) as VotingEscrow__factory
-  const votingEscrow = await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)
+  let votingEscrow: VotingEscrow
+  // let votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable
+  if (!upgradeable) {
+    logger.log('Deploying VotingEscrowV2', '🚀')
+    const VotingEscrow = (await _ethers.getContractFactory('VotingEscrow', {
+      libraries: {
+        EscrowDelegateCheckpoints: escrowDelegateCheckpoints.address,
+      },
+    })) as VotingEscrow__factory
+    votingEscrow = await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)
+  } else {
+    logger.log('Deploying VotingEscrowV2Upgradeable', '🚀')
+    const VotingEscrowV2Upgradeable = (await _ethers.getContractFactory('VotingEscrowV2Upgradeable', {
+      libraries: {
+        EscrowDelegateCheckpoints: escrowDelegateCheckpoints.address,
+      },
+    })) as VotingEscrowV2Upgradeable__factory
+    const votingEscrowV2Upgradeable_Implementation = await VotingEscrowV2Upgradeable.deploy()
+
+    const initializerParams = ['Vote Escrow Lynx', 'veLYNX', '1', mockToken.address]
+    const initializerData = VotingEscrowV2Upgradeable.interface.encodeFunctionData('initialize', initializerParams)
+
+    const TransparentUpgradeableProxyFactory = await _ethers.getContractFactory('TransparentUpgradeableProxy')
+    const transparentProxy = await TransparentUpgradeableProxyFactory.deploy(
+      votingEscrowV2Upgradeable_Implementation.address,
+      proxyAdminEoa.address,
+      initializerData
+    )
+    votingEscrow = (await _ethers.getContractAt(
+      'VotingEscrowV2Upgradeable',
+      transparentProxy.address
+    )) as unknown as VotingEscrow
+  }
 
   const VotingEscrowTestHelper = (await _ethers.getContractFactory(
     'VotingEscrowTestHelper'
