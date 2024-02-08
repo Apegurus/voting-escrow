@@ -982,8 +982,8 @@ describe('VotingEscrow', function () {
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
-        // await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
-        // await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
+        await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
+        await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
         let latestTime = await time.latest()
 
         await validateState(
@@ -1000,24 +1000,21 @@ describe('VotingEscrow', function () {
         await time.increaseTo(latestTime + oneDay)
 
         await connectedEscrow.merge(1, 2)
-        // await connectedEscrow.connect(bob).merge(3, 4)
+        await connectedEscrow.connect(bob).merge(3, 4)
         latestTime = await time.latest()
 
-        const updatedStatePermanent = await validateState(
-          [{ tokenId: 2, account: alice }],
+        const updatedState = await validateState(
+          [
+            { tokenId: 2, account: alice },
+            { tokenId: 4, account: bob },
+          ],
           votingEscrow,
           votingEscrowTestHelper,
           latestTime
         )
-        // const updatedStateNotPermanent = await validateState(
-        //   [{ tokenId: 4, account: alice }],
-        //   votingEscrow,
-        //   votingEscrowTestHelper,
-        //   latestTime
-        // )
 
-        expect(updatedStatePermanent[0].details.amount).to.equal(lockedAmount * 2)
-        // expect(updatedStateNotPermanent[0].details.amount).to.equal(lockedAmount * 2)
+        expect(updatedState[0].details.amount).to.equal(lockedAmount * 2)
+        expect(updatedState[1].details.amount).to.equal(lockedAmount * 2)
       })
 
       it('Should merge veNFT and keep lockTime of longest lock', async function () {
