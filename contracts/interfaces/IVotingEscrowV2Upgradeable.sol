@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity 0.8.13;
 
-import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-
-interface IVotingEscrow is IERC5805, IERC721Enumerable {
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/IERC721EnumerableUpgradeable.sol";
+interface IVotingEscrowV2Upgradeable is IVotes, IERC721EnumerableUpgradeable {
     struct LockDetails {
         uint256 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started
@@ -64,10 +63,9 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
 
     function supply() external view returns (uint);
 
-    function token() external view returns (IERC20);
+    function token() external view returns (IERC20Upgradeable);
 
     function balanceOfNFT(uint256 _tokenId) external view returns (uint256);
-
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256);
 
     function delegates(uint256 tokenId, uint48 timestamp) external view returns (address);
@@ -85,12 +83,13 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
 
     function checkpoint() external;
 
+    function increaseAmount(uint256 _tokenId, uint256 _value) external;
+
     function createLockFor(
         uint256 _value,
         uint256 _lockDuration,
         address _to,
         bool _permanent
     ) external returns (uint256);
-
-    function increaseAmount(uint256 _tokenId, uint256 _value) external;
+    function decimals() external view returns (uint8);
 }
