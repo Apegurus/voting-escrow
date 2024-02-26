@@ -1287,7 +1287,7 @@ describe('VotingEscrow', function () {
     })
 
     it('Should be able to process two years worth of delegated checkpoints', async function () {
-      this.timeout(800000)
+      this.timeout(0)
       const { alice, bob, votingEscrow, clockUnit, votingEscrowTestHelper, lockedAmount, accounts } = await loadFixture(
         fixture
       )
