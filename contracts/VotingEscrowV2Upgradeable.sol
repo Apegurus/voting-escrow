@@ -76,7 +76,6 @@ contract VotingEscrowV2Upgradeable is
      * @param _symbol The symbol to set for the token.
      * @param version The version of the contract.
      * @param mainToken The main token address that will be locked in the escrow.
-     * _artProxy The address of the art proxy contract.
      */
     function initialize(
         string memory _name,
@@ -85,13 +84,13 @@ contract VotingEscrowV2Upgradeable is
         IERC20Upgradeable mainToken
     )
         public
-        // address _artProxy // FIXME: commented
+        // address _artProxy // NOTE: Removed for local testing
         initializer
     {
         __ERC5725_init(_name, _symbol);
         __EIP712_init(_name, version);
         _token = mainToken;
-        // artProxy = _artProxy;
+        // artProxy = _artProxy; // NOTE: Removed for local testing
         // Reset MAX_TIME in proxy storage
         MAX_TIME = uint256(uint128(EscrowDelegateCheckpoints.MAX_TIME));
     }
@@ -191,7 +190,7 @@ contract VotingEscrowV2Upgradeable is
             if (unlockTime > block.timestamp + MAX_TIME) revert LockDurationTooLong();
         }
 
-        _mint(to, newTokenId);
+        _safeMint(to, newTokenId);
         _lockDetails[newTokenId].startTime = block.timestamp;
         /// @dev Checkpoint created in _updateLock
         _updateLock(newTokenId, value, unlockTime, _lockDetails[newTokenId], permanent, depositType);
@@ -415,8 +414,6 @@ contract VotingEscrowV2Upgradeable is
         uint256 amountClaimed = claimablePayout(_tokenId);
         if (amountClaimed == 0) revert LockNotExpired();
 
-        // Burn the NFT
-        _burn(_tokenId);
         // Reset the lock details
         _lockDetails[_tokenId] = IVotingEscrowV2Upgradeable.LockDetails(0, 0, 0, false);
         // Update the total supply
@@ -454,15 +451,15 @@ contract VotingEscrowV2Upgradeable is
         if (_from == _to) revert SameNFT();
 
         IVotingEscrowV2Upgradeable.LockDetails memory oldLockedTo = _lockDetails[_to];
+        if (oldLockedTo.amount == 0) revert ZeroAmount();
         if (oldLockedTo.endTime <= block.timestamp && !oldLockedTo.isPermanent) revert LockExpired();
 
         IVotingEscrowV2Upgradeable.LockDetails memory oldLockedFrom = _lockDetails[_from];
+        if (oldLockedFrom.amount == 0) revert ZeroAmount();
         if (oldLockedFrom.isPermanent != oldLockedTo.isPermanent) revert PermanentLockMismatch();
         // Calculate the new end time
         uint256 end = oldLockedFrom.endTime >= oldLockedTo.endTime ? oldLockedFrom.endTime : oldLockedTo.endTime;
 
-        // Burn the token being merged from
-        _burn(_from);
         // Reset the lock details
         _lockDetails[_from] = LockDetails(0, 0, 0, false);
         // Update the lock details
@@ -492,7 +489,7 @@ contract VotingEscrowV2Upgradeable is
         uint256 currentTime = block.timestamp;
         /// @dev Pulling directly from locked struct to avoid stack-too-deep
         if (locked.endTime <= currentTime && !locked.isPermanent) revert LockExpired();
-        if (locked.amount == 0) revert ZeroAmount();
+        if (locked.amount == 0 || _weights.length < 2) revert ZeroAmount();
 
         // reset supply, _deposit_for increase it
         supply -= uint256(int256(locked.amount));
@@ -506,7 +503,6 @@ contract VotingEscrowV2Upgradeable is
         // remove old data
         _lockDetails[_tokenId] = LockDetails(0, 0, 0, false);
         _checkpointLock(_tokenId, locked, _lockDetails[_tokenId]);
-        _burn(_tokenId);
 
         uint256 duration = locked.isPermanent
             ? 0
@@ -514,11 +510,27 @@ contract VotingEscrowV2Upgradeable is
                 ? locked.endTime - currentTime
                 : 0;
 
+        uint256 amountLeftToSplit = locked.amount;
         for (uint256 i = 0; i < _weights.length; i++) {
             uint256 value = (uint256(int256(locked.amount)) * _weights[i]) / totalWeight;
+            if (i == _weights.length - 1) {
+                /// @dev Ensure no rounding errors occur by passing the remainder to the last split
+                value = amountLeftToSplit;
+            }
+            amountLeftToSplit -= value;
             _createLock(value, duration, owner, owner, locked.isPermanent, DepositType.SPLIT_TYPE);
         }
         emit LockSplit(_weights, _tokenId);
+    }
+
+    /**
+     * @notice Burns a token
+     * @param _tokenId The ids of the tokens to burn
+     */
+    function burn(uint256 _tokenId) external {
+        if (_ownerOf(_tokenId) != _msgSender()) revert NotLockOwner();
+        if (_lockDetails[_tokenId].amount > 0) revert LockHoldsValue();
+        _burn(_tokenId);
     }
 
     /*///////////////////////////////////////////////////////////////

@@ -182,7 +182,7 @@ export class DeployManager {
     initializerParams: (string | BigNumberish)[],
     { name = 'Contract', proxyAdminAddress, proxyAdminOwner }: UpgradeableDeployContractOptions = {}
   ): Promise<{
-    implementationThroughProxy: ReturnType<C['attach']> // Returns the interface of the implementation, at the proxy address.
+    implementationThroughProxy: Awaited<ReturnType<C['attach']>> // Returns the interface of the implementation, at the proxy address.
     proxyAdmin: ProxyAdmin
     transparentProxy: TransparentUpgradeableProxy
     implementation: ReturnType<C['deploy']>
@@ -214,7 +214,9 @@ export class DeployManager {
       initializerData
     )
     // Return the proxy contract as an instance of the implementation contract
-    const implementationThroughProxy = (await contract.attach(transparentProxy.address)) as ReturnType<C['attach']>
+    const implementationThroughProxy = (await contract.attach(transparentProxy.address)) as Awaited<
+      ReturnType<C['attach']>
+    >
 
     return {
       implementationThroughProxy,

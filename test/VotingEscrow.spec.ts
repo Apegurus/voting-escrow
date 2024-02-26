@@ -6,7 +6,7 @@ import '@nomicfoundation/hardhat-chai-matchers'
 
 import { deployVotingEscrowFixture } from './fixtures/deployVotingEscrow'
 import { isWithinLimit } from './utils'
-import { VotingEscrow, VotingEscrowTestHelper } from '../typechain-types'
+import { VotingEscrow, VotingEscrowTestHelper, VotingEscrowV2Upgradeable } from '../typechain-types'
 import { BigNumber } from 'ethers'
 import { chunk } from 'lodash'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
@@ -41,7 +41,7 @@ async function mineAndGetLatestTime() {
 
 async function validateState(
   state: any,
-  votingEscrow: VotingEscrow,
+  votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable,
   votingEscrowTestHelper: VotingEscrowTestHelper,
   testTime: number
 ) {
@@ -126,7 +126,7 @@ async function validateState(
 async function finalStateCheck(
   state: any,
   historyState: any,
-  votingEscrow: VotingEscrow,
+  votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable,
   votingEscrowTestHelper: VotingEscrowTestHelper
 ) {
   const testTimes = Object.keys(historyState)
@@ -828,29 +828,34 @@ describe('VotingEscrow', function () {
         const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
-
+        const initialTokenId = 1
         const oneDay = 24 * 60 * 60
         // const sevenDays = 7 * oneDay
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
-        await validateState([{ tokenId: 1, account: alice }], votingEscrow, votingEscrowTestHelper, latestTime)
+        await validateState(
+          [{ tokenId: initialTokenId, account: alice }],
+          votingEscrow,
+          votingEscrowTestHelper,
+          latestTime
+        )
         await time.increaseTo(latestTime + oneDay)
 
-        await connectedEscrow.split([50, 50], 1)
+        await connectedEscrow.split([50, 50], initialTokenId)
         latestTime = await time.latest()
 
         const [token1, token2] = await Promise.all([
-          votingEscrow.tokenOfOwnerByIndex(alice.address, 0),
+          // @note split doesn't burn the original token, offsetting index by 1
           votingEscrow.tokenOfOwnerByIndex(alice.address, 1),
+          votingEscrow.tokenOfOwnerByIndex(alice.address, 2),
         ])
         const [lock1, lock2] = await Promise.all([votingEscrow.lockDetails(token1), votingEscrow.lockDetails(token2)])
 
         expect(lock1.amount).to.equal(lockedAmount / 2)
         expect(lock1.amount).to.equal(lock2.amount)
 
-        await expect(votingEscrow.ownerOf(1)).to.be.revertedWith('ERC721: invalid token ID')
         await validateState(
           [
             { tokenId: token1, account: alice },
@@ -860,6 +865,9 @@ describe('VotingEscrow', function () {
           votingEscrowTestHelper,
           latestTime
         )
+
+        await connectedEscrow.burn(initialTokenId)
+        await expect(votingEscrow.ownerOf(1)).to.be.revertedWith('ERC721: invalid token ID')
       })
 
       it('Should not be able to split an unauthorized veNFT', async function () {
@@ -900,26 +908,32 @@ describe('VotingEscrow', function () {
         const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
-
+        const initialTokenId = 1
         const oneDay = 24 * 60 * 60
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
-        await validateState([{ tokenId: 1, account: alice }], votingEscrow, votingEscrowTestHelper, latestTime)
+        await validateState(
+          [{ tokenId: initialTokenId, account: alice }],
+          votingEscrow,
+          votingEscrowTestHelper,
+          latestTime
+        )
         await time.increaseTo(latestTime + oneDay)
 
         const splitAmounts = [50, 20, 10, 5, 15]
 
-        await connectedEscrow.split(splitAmounts, 1)
+        await connectedEscrow.split(splitAmounts, initialTokenId)
         latestTime = await time.latest()
 
         const tokens = await Promise.all(
-          splitAmounts.map((val, index) => votingEscrow.tokenOfOwnerByIndex(alice.address, index))
+          // @note split doesn't burn the original token, offsetting index by 1
+          splitAmounts.map((val, index) => votingEscrow.tokenOfOwnerByIndex(alice.address, index + 1))
         )
         const locks = await Promise.all(tokens.map((val) => votingEscrow.lockDetails(val)))
 
-        console.log(tokens, locks)
+        console.dir({ tokens, locks })
         let sumAmounts = BigNumber.from(0)
         const state = [] as any
         splitAmounts.forEach((amount, index) => {

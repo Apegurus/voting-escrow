@@ -60,6 +60,8 @@ interface IVotingEscrowV2Upgradeable is IVotes, IERC721EnumerableUpgradeable {
     error SameNFT();
     error SignatureExpired();
     error ZeroAmount();
+    error LockHoldsValue();
+    error NotLockOwner();
 
     function supply() external view returns (uint);
 
@@ -91,5 +93,12 @@ interface IVotingEscrowV2Upgradeable is IVotes, IERC721EnumerableUpgradeable {
         address _to,
         bool _permanent
     ) external returns (uint256);
+
+    function split(uint256[] memory _weights, uint256 _tokenId) external;
+
+    function merge(uint256 _from, uint256 _to) external;
+
+    function burn(uint256 _tokenId) external;
+
     function decimals() external view returns (uint8);
 }
