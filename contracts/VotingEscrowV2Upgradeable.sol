@@ -350,7 +350,7 @@ contract VotingEscrowV2Upgradeable is
         if (_value == 0) revert ZeroAmount();
 
         IVotingEscrowV2Upgradeable.LockDetails memory oldLocked = _lockDetails[_tokenId];
-        if (ownerOf(_tokenId) == address(0)) revert NoLockFound();
+        if (_ownerOf(_tokenId) == address(0)) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
         _updateLock(_tokenId, _value, 0, oldLocked, oldLocked.isPermanent, DepositType.INCREASE_LOCK_AMOUNT);
