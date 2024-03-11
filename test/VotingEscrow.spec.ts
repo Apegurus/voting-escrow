@@ -847,9 +847,8 @@ describe('VotingEscrow', function () {
         latestTime = await time.latest()
 
         const [token1, token2] = await Promise.all([
-          // @note split doesn't burn the original token, offsetting index by 1
+          votingEscrow.tokenOfOwnerByIndex(alice.address, 0),
           votingEscrow.tokenOfOwnerByIndex(alice.address, 1),
-          votingEscrow.tokenOfOwnerByIndex(alice.address, 2),
         ])
         const [lock1, lock2] = await Promise.all([votingEscrow.lockDetails(token1), votingEscrow.lockDetails(token2)])
 
@@ -865,9 +864,6 @@ describe('VotingEscrow', function () {
           votingEscrowTestHelper,
           latestTime
         )
-
-        await connectedEscrow.burn(initialTokenId)
-        await expect(votingEscrow.ownerOf(1)).to.be.revertedWith('ERC721: invalid token ID')
       })
 
       it('Should not be able to split an unauthorized veNFT', async function () {
@@ -929,7 +925,7 @@ describe('VotingEscrow', function () {
 
         const tokens = await Promise.all(
           // @note split doesn't burn the original token, offsetting index by 1
-          splitAmounts.map((val, index) => votingEscrow.tokenOfOwnerByIndex(alice.address, index + 1))
+          splitAmounts.map((val, index) => votingEscrow.tokenOfOwnerByIndex(alice.address, index))
         )
         const locks = await Promise.all(tokens.map((val) => votingEscrow.lockDetails(val)))
 
