@@ -33,7 +33,6 @@ import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
 contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotingEscrow, EIP712 {
     using SafeERC20 for IERC20;
     using SafeCastLibrary for uint256;
-    using SafeCastLibrary for int128;
     using EscrowDelegateCheckpoints for EscrowDelegateCheckpoints.EscrowDelegateStore;
 
     enum DepositType {
@@ -333,7 +332,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         if (_value == 0) revert ZeroAmount();
 
         IVotingEscrow.LockDetails memory oldLocked = _lockDetails[_tokenId];
-        if (oldLocked.amount <= 0) revert NoLockFound();
+        if (_ownerOf(_tokenId) == address(0)) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
         _updateLock(_tokenId, _value, 0, oldLocked, oldLocked.isPermanent, DepositType.INCREASE_LOCK_AMOUNT);
@@ -439,12 +438,13 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
 
         IVotingEscrow.LockDetails memory oldLockedFrom = _lockDetails[_from];
         if (oldLockedFrom.amount == 0) revert ZeroAmount();
-        if (oldLockedFrom.isPermanent != oldLockedTo.isPermanent) revert PermanentLock();
+        if (oldLockedFrom.isPermanent == true && oldLockedFrom.isPermanent != oldLockedTo.isPermanent)
+            revert PermanentLockMismatch();
         // Calculate the new end time
         uint256 end = oldLockedFrom.endTime >= oldLockedTo.endTime ? oldLockedFrom.endTime : oldLockedTo.endTime;
 
-        // Reset the lock details
-        _lockDetails[_from] = LockDetails(0, 0, 0, false);
+        // Set lock amount to 0
+        _lockDetails[_from].amount = 0;
         // Update the lock details
         _checkpointLock(_from, oldLockedFrom, _lockDetails[_from]);
 
@@ -469,6 +469,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      */
     function split(uint256[] memory _weights, uint256 _tokenId) external nonReentrant checkAuthorized(_tokenId) {
         LockDetails memory locked = _lockDetails[_tokenId];
+        LockDetails storage lockedStorage = _lockDetails[_tokenId];
         uint256 currentTime = block.timestamp;
         /// @dev Pulling directly from locked struct to avoid stack-too-deep
         if (locked.endTime <= currentTime && !locked.isPermanent) revert LockExpired();
@@ -482,10 +483,6 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         for (uint256 i = 0; i < _weights.length; i++) {
             totalWeight += _weights[i];
         }
-
-        // remove old data
-        _lockDetails[_tokenId] = LockDetails(0, 0, 0, false);
-        _checkpointLock(_tokenId, locked, _lockDetails[_tokenId]);
 
         uint256 duration = locked.isPermanent
             ? 0
@@ -501,7 +498,12 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
                 value = amountLeftToSplit;
             }
             amountLeftToSplit -= value;
-            _createLock(value, duration, owner, owner, locked.isPermanent, DepositType.SPLIT_TYPE);
+            if (i == 0) {
+                lockedStorage.amount = value;
+                _checkpointLock(_tokenId, locked, lockedStorage);
+            } else {
+                _createLock(value, duration, owner, owner, locked.isPermanent, DepositType.SPLIT_TYPE);
+            }
         }
         emit LockSplit(_weights, _tokenId);
     }
@@ -544,7 +546,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     }
 
     /*///////////////////////////////////////////////////////////////
-                           @dev See {IERC5805}.
+                           @dev See {IVotes}.
     //////////////////////////////////////////////////////////////*/
 
     /**

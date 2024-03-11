@@ -95,6 +95,14 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
         bool _permanent
     ) external returns (uint256);
 
+    function createDelegatedLockFor(
+        uint256 _value,
+        uint256 _lockDuration,
+        address _to,
+        address _delegatee,
+        bool _permanent
+    ) external returns (uint256);
+
     function split(uint256[] memory _weights, uint256 _tokenId) external;
 
     function merge(uint256 _from, uint256 _to) external;
