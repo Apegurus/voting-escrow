@@ -1,5 +1,5 @@
 import { ethers, network } from 'hardhat'
-import { getDeployConfig, DeployableNetworks } from './deploy.config'
+import { getDeployConfig, DeployableNetworks, DeploymentAccounts } from './deploy.config'
 import { DeployManager } from './DeployManager'
 import { logger } from '../../hardhat/utils'
 import { ERC20Mock__factory, VotingEscrowV2Upgradeable__factory } from '../../typechain-types'
@@ -13,14 +13,28 @@ async function main() {
   const currentNetwork = network.name as DeployableNetworks
   // Optionally pass in accounts to be able to use them in the deployConfig
   const accounts = await ethers.getSigners()
-  const { wNative, adminAddress, veDetails, contractOverrides } = getDeployConfig(currentNetwork, accounts)
+  let accountOverrides: Partial<DeploymentAccounts> = {}
+  if (currentNetwork === 'hardhat') {
+    accountOverrides = {
+      adminAddress: accounts[1].address,
+    }
+  }
+  const {
+    wNative,
+    accounts: { adminAddress },
+    veDetails,
+    contractOverrides,
+  } = getDeployConfig(currentNetwork, {
+    accountOverrides,
+    contractOverrides: {},
+  })
 
   // Optionally pass in signer to deploy contracts
   const deployManager = await DeployManager.create({ signer: accounts[0] })
 
   let lockTokenAddress = contractOverrides.lockToken
   if (!lockTokenAddress) {
-    // FIXME: Deploying ERC20Mock
+    // NOTE: Deploying ERC20Mock
     logger.warn(`No lockToken provided in deploy.config, deploying ERC20Mock...`)
     const lockToken = await deployManager.deployContract<ERC20Mock__factory>('ERC20Mock', [
       '100000000000000000000000000000000000',
@@ -38,7 +52,7 @@ async function main() {
     await deployManager.deployUpgradeableContract<VotingEscrowV2Upgradeable__factory>(
       'VotingEscrowV2Upgradeable',
       [veDetails.name, veDetails.symbol, veDetails.version, lockTokenAddress],
-      {},
+      { proxyAdminAddress: contractOverrides.proxyAdminAddress },
       {
         libraries: {
           EscrowDelegateCheckpoints: escrowDelegateCheckpoints.address,
