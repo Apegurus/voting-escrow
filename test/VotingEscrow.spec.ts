@@ -842,6 +842,7 @@ describe('VotingEscrow', function () {
           latestTime
         )
         await time.increaseTo(latestTime + oneDay)
+        const veSupplyBefore = await votingEscrow.supply()
 
         await connectedEscrow.split([50, 50], initialTokenId)
         latestTime = await time.latest()
@@ -854,6 +855,7 @@ describe('VotingEscrow', function () {
 
         expect(lock1.amount).to.equal(lockedAmount / 2)
         expect(lock1.amount).to.equal(lock2.amount)
+        expect(veSupplyBefore).to.equal(await votingEscrow.supply(), 'Supply should not change on split')
 
         await validateState(
           [

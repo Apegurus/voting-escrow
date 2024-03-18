@@ -49,6 +49,7 @@ interface IVotingEscrowV2Upgradeable is IVotes, IERC721EnumerableUpgradeable {
     error InvalidDelegatee();
     error InvalidSignature();
     error InvalidSignatureS();
+    error InvalidWeights();
     error LockDurationNotInFuture();
     error LockDurationTooLong();
     error LockExpired();

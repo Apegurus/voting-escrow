@@ -483,6 +483,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         for (uint256 i = 0; i < _weights.length; i++) {
             totalWeight += _weights[i];
         }
+        if (totalWeight == 0) revert InvalidWeights();
 
         uint256 duration = locked.isPermanent
             ? 0
@@ -500,6 +501,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
             amountLeftToSplit -= value;
             if (i == 0) {
                 lockedStorage.amount = value;
+                supply += value;
                 _checkpointLock(_tokenId, locked, lockedStorage);
             } else {
                 _createLock(value, duration, owner, owner, locked.isPermanent, DepositType.SPLIT_TYPE);
