@@ -32,16 +32,18 @@ interface IEscrowWeightLens {
     function durationDaysThresholds(uint256 index) external view returns (uint256);
     function multipliers(uint256 index) external view returns (uint256);
     function setMultipliers(uint256[] memory _durationDaysThresholds, uint256[] memory _multipliers) external;
-    function getMultiplierForDaysLocked(uint256 durationDays) external view returns (uint256 multiplier);
+    function getMultiplierForDaysLocked(uint256 durationDays) external view returns (uint256 multiplier, uint256 tier);
 
     /// -----------------------------------------------------------------------
     /// Escrow Weight Calculation
     /// -----------------------------------------------------------------------
-    function getEscrowWeight(address escrowOwner) external view returns (uint256 totalWeight);
+    function getEscrowWeight(
+        address escrowOwner
+    ) external view returns (uint256 totalWeight, uint256 maxMultiplier, uint256 maxTier);
     function getEscrowWeightForTokenIds(
         address escrowOwner,
         uint256[] memory tokenIds
-    ) external view returns (uint256 totalWeight);
+    ) external view returns (uint256 totalWeight, uint256 maxMultiplier, uint256 maxTier);
 
     /// -----------------------------------------------------------------------
     /// Voting Escrow Reference

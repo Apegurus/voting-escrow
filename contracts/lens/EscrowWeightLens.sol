@@ -59,6 +59,18 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
     /// -----------------------------------------------------------------------
     /// Duration Threshold + Multiplier Management
     /// -----------------------------------------------------------------------
+    /**
+     * @notice Retrieves the duration thresholds and their corresponding multipliers
+     * @return _durationDaysThresholds The array of duration thresholds
+     * @return _multipliers The array of multipliers corresponding to the duration thresholds
+     */
+    function getMultipliers()
+        external
+        view
+        returns (uint256[] memory _durationDaysThresholds, uint256[] memory _multipliers)
+    {
+        return (durationDaysThresholds, multipliers);
+    }
 
     /**
      * @notice Sets the multipliers for the contract
@@ -78,8 +90,9 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
      * @notice Gets the multiplier for a given number of days locked
      * @param durationDays The number of days for which the tokens are locked
      * @return multiplier The multiplier corresponding to the given number of days locked
+     * @return tier The tier corresponding to the given number of days locked
      */
-    function getMultiplierForDaysLocked(uint256 durationDays) external view returns (uint256 multiplier) {
+    function getMultiplierForDaysLocked(uint256 durationDays) external view returns (uint256 multiplier, uint256 tier) {
         return _getMultiplierForSecondsLocked(durationDays * 1 days);
     }
 
@@ -113,8 +126,11 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
      * @notice Internal function to get the multiplier for a given duration
      * @param durationSeconds The duration for which to get the multiplier
      * @return multiplier The multiplier corresponding to the given duration
+     * @return tier The tier corresponding to the given duration
      */
-    function _getMultiplierForSecondsLocked(uint256 durationSeconds) internal view returns (uint256 multiplier) {
+    function _getMultiplierForSecondsLocked(
+        uint256 durationSeconds
+    ) internal view returns (uint256 multiplier, uint256 tier) {
         multiplier = MULTIPLIER_PRECISION; // Start with the default multiplier of 1
         // Loop through each threshold to find the appropriate multiplier
         for (uint256 i = 0; i < durationDaysThresholds.length; i++) {
@@ -122,6 +138,8 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
             // durationDaysThresholds is in descending order, so the first match is the correct one
             if (durationSeconds >= durationDaysThresholds[i] * 1 days) {
                 multiplier = multipliers[i];
+                /// @dev tier is 1-indexed
+                tier = multipliers.length - i;
                 break;
             }
         }
@@ -135,17 +153,26 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
      * @notice Calculates the total weight of an owner's escrowed tokens
      * @param escrowOwner The address of the token owner
      * @return totalWeight The total weight of the owner's escrowed tokens
+     * @return maxMultiplier The maximum multiplier for the owner's escrowed tokens
+     * @return maxTier The tier corresponding to the maximum multiplier
      */
-    function getEscrowWeight(address escrowOwner) external view returns (uint256 totalWeight) {
+    function getEscrowWeight(
+        address escrowOwner
+    ) external view returns (uint256 totalWeight, uint256 maxMultiplier, uint256 maxTier) {
         uint256 ownerBalance = votingEscrow.balanceOf(escrowOwner);
         if (ownerBalance == 0) {
-            return 0;
+            return (0, 0, 0);
         }
 
         for (uint256 i = 0; i < ownerBalance; i++) {
             uint256 tokenId = votingEscrow.tokenOfOwnerByIndex(escrowOwner, i);
             IVotingEscrowV2Upgradeable.LockDetails memory lock = votingEscrow.lockDetails(tokenId);
-            totalWeight += _calculateWeight(lock);
+            (uint256 weight, uint256 multiplier, uint256 tier) = _calculateWeight(lock);
+            totalWeight += weight;
+            if (tier > maxTier) {
+                maxTier = tier;
+                maxMultiplier = multiplier;
+            }
         }
     }
 
@@ -158,13 +185,18 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
     function getEscrowWeightForTokenIds(
         address escrowOwner,
         uint256[] calldata tokenIds
-    ) external view returns (uint256 totalWeight) {
+    ) external view returns (uint256 totalWeight, uint256 maxMultiplier, uint256 maxTier) {
         for (uint256 i = 0; i < tokenIds.length; i++) {
             if (votingEscrow.ownerOf(tokenIds[i]) != escrowOwner) {
                 revert IVotingEscrowV2Upgradeable.NotLockOwner();
             }
             IVotingEscrowV2Upgradeable.LockDetails memory lock = votingEscrow.lockDetails(tokenIds[i]);
-            totalWeight += _calculateWeight(lock);
+            (uint256 weight, uint256 multiplier, uint256 tier) = _calculateWeight(lock);
+            totalWeight += weight;
+            if (tier > maxTier) {
+                maxTier = tier;
+                maxMultiplier = multiplier;
+            }
         }
     }
 
@@ -175,20 +207,20 @@ contract EscrowWeightLens is IEscrowWeightLens, Initializable, OwnableUpgradeabl
      */
     function _calculateWeight(
         IVotingEscrowV2Upgradeable.LockDetails memory lock
-    ) internal view returns (uint256 weight) {
+    ) internal view returns (uint256 weight, uint256 multiplier, uint256 tier) {
         // Check if the current block timestamp is within the lock period of the token.
         // If the current time is before the start time or after the end time of the lock,
         // the token is not considered to be in the lock period, and its weight is zero.
         if (block.timestamp < lock.startTime || block.timestamp > lock.endTime) {
-            return 0; // Token is outside the lock period, so its weight is zero.
+            return (0, 0, 0); // Token is outside the lock period, so its weight is zero.
         }
 
         // Calculate the remaining duration of the lock in seconds.
         // This is done by subtracting the current block timestamp from the lock's end time.
         uint256 duration = lock.endTime - block.timestamp;
-        uint256 weightMultiplier = _getMultiplierForSecondsLocked(duration);
+        (multiplier, tier) = _getMultiplierForSecondsLocked(duration);
 
         // precision allows for fractional multipliers
-        weight = (lock.amount * weightMultiplier) / MULTIPLIER_PRECISION;
+        weight = (lock.amount * multiplier) / MULTIPLIER_PRECISION;
     }
 }
