@@ -63,5 +63,8 @@ export async function deployEscrowWeightLensFixture(
       escrowWeightLens,
       votingEscrowV2Upgradeable,
     },
+    config: {
+      escrowWeightLensConfig,
+    },
   }
 }
