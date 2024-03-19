@@ -50,6 +50,7 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
     error InvalidDelegatee();
     error InvalidSignature();
     error InvalidSignatureS();
+    error InvalidWeights();
     error LockDurationNotInFuture();
     error LockDurationTooLong();
     error LockExpired();
