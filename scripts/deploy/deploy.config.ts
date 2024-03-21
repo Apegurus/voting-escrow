@@ -10,7 +10,7 @@ export const DEPLOYMENTS_BASE_DIR = path.resolve(__dirname, '../../deployments')
  * @param network
  * @returns
  */
-export const getDeployConfig = (network: DeployableNetworks, overrides: FixtureOverrides): DeploymentVariables => {
+export const getDeployConfig = (network: DeployableNetworks, overrides: FixtureOverrides = {}): DeploymentVariables => {
   const config = deployableNetworkConfig[network]
   if (!config) {
     throw new Error(`No deploy config for network ${network}`)
@@ -24,30 +24,46 @@ export interface FixtureOverrides {
 }
 
 /**
- * Extract networks as deployments are needed
- *
- * NOTE: Add networks as needed
+ * DeployableNetworks is a subset of the Networks type, specifically including
+ * networks where deployment scripts will be executed. To support additional networks,
+ * extend the Extract type with the network's key as defined in the Networks type.
  */
 export type DeployableNetworks = Extract<Networks, 'bsc' | 'bscTestnet' | 'hardhat'>
 
+/**
+ * DeploymentAccounts defines the structure for account-related configurations
+ * needed during the deployment process. It currently includes an adminAddress
+ * which can be a string or a SignerWithAddress object.
+ *
+ * Extend or modify this interface to include additional account-related configurations as needed.
+ */
 export interface DeploymentAccounts {
   adminAddress: string | SignerWithAddress
 }
 
+/**
+ * DeploymentContractOverrides allows for specifying addresses of already deployed
+ * contracts or for overriding the default addresses during deployment.
+ *
+ * Extend or modify this interface to include overrides for additional contracts as needed.
+ */
 export interface DeploymentContractOverrides {
   lockToken?: string
-  votingEscrowV2?: string
+  votingEscrowV2Upgradeable?: string
   escrowWeightLens?: string
   proxyAdminAddress?: string
 }
 
 /**
- * Deployment Variables for each network
+ * Deployment variables used for the deployment of contracts in this project.
  *
- * NOTE: Update variables as needed
+ * Extend or modify the DeploymentVariables interface if additional variables are required.
  */
 interface DeploymentVariables {
+  // Accounts and contract overrides should be configured above
   accounts: DeploymentAccounts
+  contractOverrides: DeploymentContractOverrides
+  // These deployment variables can be changed and extended as needed.
   wNative?: string
   veDetails: {
     name: string
@@ -58,9 +74,13 @@ interface DeploymentVariables {
     durationDaysThresholds: number[]
     multipliers: number[]
   }
-  contractOverrides: DeploymentContractOverrides
 }
 
+/**
+ * Configuration for each deployable network. The structure is based on the interfaces above.
+ *
+ * accountOverrides and contractOverrides are optional and can be used to override configured values in this file.
+ */
 const deployableNetworkConfig: Record<
   DeployableNetworks,
   ({ accountOverrides, contractOverrides }: FixtureOverrides) => DeploymentVariables
@@ -69,7 +89,12 @@ const deployableNetworkConfig: Record<
     return {
       accounts: {
         // NOTE: Example of extracting signers
-        adminAddress: accountOverrides?.adminAddress || '0x',
+        adminAddress: accountOverrides?.adminAddress || '',
+      },
+      contractOverrides: {
+        // lockToken: contractOverrides?.lockToken || '0x2F760FCb977AF39E94A3E074dcd3649a16F8652C',
+        votingEscrowV2Upgradeable: contractOverrides?.votingEscrowV2Upgradeable || '',
+        proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
       },
       wNative: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
       veDetails: {
@@ -81,11 +106,6 @@ const deployableNetworkConfig: Record<
         durationDaysThresholds: [365, 180, 90, 45],
         multipliers: [2000, 1500, 1250, 1000],
       },
-      contractOverrides: {
-        lockToken: contractOverrides?.lockToken || '0x2F760FCb977AF39E94A3E074dcd3649a16F8652C',
-        votingEscrowV2: contractOverrides?.votingEscrowV2 || '',
-        proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
-      },
     }
   },
   bscTestnet: ({ accountOverrides, contractOverrides }: FixtureOverrides) => {
@@ -93,6 +113,11 @@ const deployableNetworkConfig: Record<
       accounts: {
         // NOTE: Example of extracting signers
         adminAddress: accountOverrides?.adminAddress || '0x',
+      },
+      contractOverrides: {
+        lockToken: contractOverrides?.lockToken || '0xedb8b85a779e872e2aeef39df96a7fcc7d5ea6af',
+        votingEscrowV2Upgradeable: contractOverrides?.votingEscrowV2Upgradeable || '',
+        proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
       },
       wNative: '0x',
       veDetails: {
@@ -103,11 +128,6 @@ const deployableNetworkConfig: Record<
       escrowWeightLens: {
         durationDaysThresholds: [365, 180, 90, 45],
         multipliers: [2000, 1500, 1250, 1000],
-      },
-      contractOverrides: {
-        lockToken: contractOverrides?.lockToken || '0xedb8b85a779e872e2aeef39df96a7fcc7d5ea6af',
-        votingEscrowV2: contractOverrides?.votingEscrowV2 || '',
-        proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
       },
     }
   },
@@ -118,6 +138,11 @@ const deployableNetworkConfig: Record<
         // NOTE: Example of extracting signers
         adminAddress: accountOverrides?.adminAddress || defaultAccount,
       },
+      contractOverrides: {
+        lockToken: contractOverrides?.lockToken || '',
+        votingEscrowV2Upgradeable: contractOverrides?.votingEscrowV2Upgradeable || '',
+        proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
+      },
       wNative: '0x',
       veDetails: {
         name: 'Vote Escrow',
@@ -127,11 +152,6 @@ const deployableNetworkConfig: Record<
       escrowWeightLens: {
         durationDaysThresholds: [365, 180, 90, 45],
         multipliers: [2000, 1500, 1250, 1000],
-      },
-      contractOverrides: {
-        lockToken: contractOverrides?.lockToken || '',
-        votingEscrowV2: contractOverrides?.votingEscrowV2 || '',
-        proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
       },
     }
   },
