@@ -20,7 +20,7 @@
     "compile": "hardhat compile",
     "compile:quick": "hardhat compile",
     "gen:docs": "hardhat docgen",
-    "deploy": "hardhat run ./scripts/deploy/deployLock.ts --network",
+    "deploy": "hardhat run ./scripts/deploy/deployVotingEscrowV2Upgradeable.ts --network",
     "verify": "hardhat verify-contract",
     "semgrep": "semgrep --config modules/semgrep-smart-contracts/solidity ./contracts",
     "test": "hardhat test",

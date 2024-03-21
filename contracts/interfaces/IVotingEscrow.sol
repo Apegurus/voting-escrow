@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity 0.8.13;
 
 import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
@@ -50,6 +50,7 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
     error InvalidDelegatee();
     error InvalidSignature();
     error InvalidSignatureS();
+    error InvalidWeights();
     error LockDurationNotInFuture();
     error LockDurationTooLong();
     error LockExpired();
@@ -61,13 +62,14 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
     error SameNFT();
     error SignatureExpired();
     error ZeroAmount();
+    error LockHoldsValue();
+    error NotLockOwner();
 
     function supply() external view returns (uint);
 
     function token() external view returns (IERC20);
 
     function balanceOfNFT(uint256 _tokenId) external view returns (uint256);
-
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256);
 
     function delegates(uint256 tokenId, uint48 timestamp) external view returns (address);
@@ -85,6 +87,8 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
 
     function checkpoint() external;
 
+    function increaseAmount(uint256 _tokenId, uint256 _value) external;
+
     function createLockFor(
         uint256 _value,
         uint256 _lockDuration,
@@ -92,5 +96,19 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
         bool _permanent
     ) external returns (uint256);
 
-    function increaseAmount(uint256 _tokenId, uint256 _value) external;
+    function createDelegatedLockFor(
+        uint256 _value,
+        uint256 _lockDuration,
+        address _to,
+        address _delegatee,
+        bool _permanent
+    ) external returns (uint256);
+
+    function split(uint256[] memory _weights, uint256 _tokenId) external;
+
+    function merge(uint256 _from, uint256 _to) external;
+
+    function burn(uint256 _tokenId) external;
+
+    function decimals() external view returns (uint8);
 }

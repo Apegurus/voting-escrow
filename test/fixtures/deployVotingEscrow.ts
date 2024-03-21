@@ -9,7 +9,7 @@ import {
 } from '../../typechain-types'
 import { logger } from '../../hardhat/utils'
 
-export async function deployVotingEscrowFixture(_ethers: typeof ethers, upgradeable = false) {
+export async function deployVotingEscrowFixture<T extends boolean>(_ethers: typeof ethers, upgradeable: T) {
   const [owner, alice, bob, calvin, proxyAdminEoa] = await _ethers.getSigners()
 
   const ERC20Mock = await _ethers.getContractFactory('ERC20Mock')
@@ -18,8 +18,8 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers, upgradea
   const EscrowDelegateCheckpoints = await _ethers.getContractFactory('EscrowDelegateCheckpoints')
   const escrowDelegateCheckpoints = await EscrowDelegateCheckpoints.deploy()
 
-  let votingEscrow: VotingEscrow
-  // let votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable
+  type VEReturn = T extends true ? VotingEscrowV2Upgradeable : VotingEscrow
+  let votingEscrow: VEReturn
   if (!upgradeable) {
     logger.log('Deploying VotingEscrowV2', '🚀')
     const VotingEscrow = (await _ethers.getContractFactory('VotingEscrow', {
@@ -27,7 +27,7 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers, upgradea
         EscrowDelegateCheckpoints: escrowDelegateCheckpoints.address,
       },
     })) as VotingEscrow__factory
-    votingEscrow = await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)
+    votingEscrow = (await VotingEscrow.deploy('VotingEscrow', 'veTOKEN', '1.0', mockToken.address)) as VEReturn
   } else {
     logger.log('Deploying VotingEscrowV2Upgradeable', '🚀')
     const VotingEscrowV2Upgradeable = (await _ethers.getContractFactory('VotingEscrowV2Upgradeable', {
@@ -46,10 +46,7 @@ export async function deployVotingEscrowFixture(_ethers: typeof ethers, upgradea
       proxyAdminEoa.address,
       initializerData
     )
-    votingEscrow = (await _ethers.getContractAt(
-      'VotingEscrowV2Upgradeable',
-      transparentProxy.address
-    )) as unknown as VotingEscrow
+    votingEscrow = (await _ethers.getContractAt('VotingEscrowV2Upgradeable', transparentProxy.address)) as VEReturn
   }
 
   const VotingEscrowTestHelper = (await _ethers.getContractFactory(

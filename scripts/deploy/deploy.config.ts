@@ -33,7 +33,15 @@ export type DeployableNetworks = Extract<Networks, 'bsc' | 'bscTestnet'>
 interface DeploymentVariables {
   proxyAdminAddress: string
   adminAddress: string | SignerWithAddress
-  wNative: string
+  wNative?: string
+  veDetails: {
+    name: string
+    symbol: string
+    version: string
+  }
+  contractOverrides: {
+    lockToken?: string
+  }
 }
 
 const deployableNetworkConfig: Record<DeployableNetworks, (signers?: SignerWithAddress[]) => DeploymentVariables> = {
@@ -43,6 +51,14 @@ const deployableNetworkConfig: Record<DeployableNetworks, (signers?: SignerWithA
       // NOTE: Example of extracting signers
       adminAddress: signers?.[0] || '0x',
       wNative: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+      veDetails: {
+        name: 'Vote Escrow',
+        symbol: 'veToken',
+        version: '1',
+      },
+      contractOverrides: {
+        lockToken: '0x',
+      },
     }
   },
   bscTestnet: (signers?: SignerWithAddress[]) => {
@@ -50,6 +66,14 @@ const deployableNetworkConfig: Record<DeployableNetworks, (signers?: SignerWithA
       proxyAdminAddress: '0x',
       adminAddress: signers?.[0] || '0x',
       wNative: '0x',
+      veDetails: {
+        name: 'Vote Escrow',
+        symbol: 'veToken',
+        version: '1',
+      },
+      contractOverrides: {
+        lockToken: '0xedb8b85a779e872e2aeef39df96a7fcc7d5ea6af',
+      },
     }
   },
 }
