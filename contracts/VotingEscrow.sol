@@ -10,7 +10,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC5725} from "./erc5725/ERC5725.sol";
-import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
+import {IVotingEscrowV2} from "./interfaces/IVotingEscrowV2.sol";
 /// @dev Importing IERC5805, IERC6372, and IVotes directly to add override defectives
 import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
@@ -28,9 +28,16 @@ import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
  *
  * - tokenIds always have a delegatee, with the owner being the default (see createLock)
  * - On transfers, delegation is reset. (See _update)
- * -
+ *
+ * @custom:limitations
+ * - DOES NOT support feeOnTransfer for lock token: _token
+ * - EscrowDelegateCheckpoints.checkpoint() creates a minimum token decimal limitation
+ *   - Because point.slope = (amount) / MAX_TIME, if amount is less than 63,072,000 (two years), the slope will be divided to 0.
+ *   - This limitation means that the minimum token decimal should be 8, but more is recommended.
+ * - MultiSig Support: To enable multisig support, _createLock by passes safeMint if msg.sender == to. Contracts calling this
+ *     contract are expected to be able to handle NFTs being minted to them.
  */
-contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotingEscrow, EIP712 {
+contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotingEscrowV2, EIP712 {
     using SafeERC20 for IERC20;
     using SafeCastLibrary for uint256;
     using EscrowDelegateCheckpoints for EscrowDelegateCheckpoints.EscrowDelegateStore;
@@ -108,7 +115,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function supportsInterface(
         bytes4 interfaceId
     ) public view virtual override(ERC5725, IERC165) returns (bool supported) {
-        return interfaceId == type(IVotingEscrow).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(IVotingEscrowV2).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /**
@@ -172,7 +179,11 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
             if (unlockTime > block.timestamp + MAX_TIME) revert LockDurationTooLong();
         }
 
-        _safeMint(to, newTokenId);
+        if (_msgSender() != to) {
+            _safeMint(to, newTokenId);
+        } else {
+            _mint(to, newTokenId);
+        }
         _lockDetails[newTokenId].startTime = block.timestamp;
         /// @dev Checkpoint created in _updateLock
         _updateLock(newTokenId, value, unlockTime, _lockDetails[newTokenId], permanent, depositType);
@@ -311,8 +322,8 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /// @param _newLocked New locked amount / end lock time for the user
     function _checkpointLock(
         uint256 _tokenId,
-        IVotingEscrow.LockDetails memory _oldLocked,
-        IVotingEscrow.LockDetails memory _newLocked
+        IVotingEscrowV2.LockDetails memory _oldLocked,
+        IVotingEscrowV2.LockDetails memory _newLocked
     ) internal {
         edStore.checkpoint(
             _tokenId,
@@ -331,7 +342,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function increaseAmount(uint256 _tokenId, uint256 _value) external nonReentrant {
         if (_value == 0) revert ZeroAmount();
 
-        IVotingEscrow.LockDetails memory oldLocked = _lockDetails[_tokenId];
+        IVotingEscrowV2.LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (_ownerOf(_tokenId) == address(0)) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
@@ -390,14 +401,14 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to claim the payout for
      */
     function _claim(uint256 _tokenId) internal validToken(_tokenId) nonReentrant checkAuthorized(_tokenId) {
-        IVotingEscrow.LockDetails memory oldLocked = _lockDetails[_tokenId];
+        IVotingEscrowV2.LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (oldLocked.isPermanent) revert PermanentLock();
 
         uint256 amountClaimed = claimablePayout(_tokenId);
         if (amountClaimed == 0) revert LockNotExpired();
 
         // Reset the lock details
-        _lockDetails[_tokenId] = IVotingEscrow.LockDetails(0, 0, 0, false);
+        _lockDetails[_tokenId] = IVotingEscrowV2.LockDetails(0, 0, 0, false);
         // Update the total supply
         uint256 supplyBefore = supply;
         supply -= amountClaimed;
@@ -432,11 +443,11 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function merge(uint256 _from, uint256 _to) external nonReentrant checkAuthorized(_from) checkAuthorized(_to) {
         if (_from == _to) revert SameNFT();
 
-        IVotingEscrow.LockDetails memory oldLockedTo = _lockDetails[_to];
+        IVotingEscrowV2.LockDetails memory oldLockedTo = _lockDetails[_to];
         if (oldLockedTo.amount == 0) revert ZeroAmount();
         if (oldLockedTo.endTime <= block.timestamp && !oldLockedTo.isPermanent) revert LockExpired();
 
-        IVotingEscrow.LockDetails memory oldLockedFrom = _lockDetails[_from];
+        IVotingEscrowV2.LockDetails memory oldLockedFrom = _lockDetails[_from];
         if (oldLockedFrom.amount == 0) revert ZeroAmount();
         if (oldLockedFrom.isPermanent == true && oldLockedFrom.isPermanent != oldLockedTo.isPermanent)
             revert PermanentLockMismatch();
@@ -545,6 +556,10 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
 
     function totalSupply() public view override(ERC721Enumerable, IERC721Enumerable) returns (uint256) {
         return edStore.getAdjustedGlobalVotes(block.timestamp.toUint48());
+    }
+
+    function maxTime() external view override returns (uint256) {
+        return MAX_TIME;
     }
 
     /*///////////////////////////////////////////////////////////////

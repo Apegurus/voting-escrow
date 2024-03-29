@@ -23,7 +23,14 @@ import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
  *
  * - tokenIds always have a delegatee, with the owner being the default (see createLock)
  * - On transfers, delegation is reset. (See _update)
- * -
+ *
+ * @custom:limitations
+ * - DOES NOT support feeOnTransfer for lock token: _token
+ * - EscrowDelegateCheckpoints.checkpoint() creates a minimum token decimal limitation
+ *   - Because point.slope = (amount) / MAX_TIME, if amount is less than 63,072,000 (two years), the slope will be divided to 0.
+ *   - This limitation means that the minimum token decimal should be 8, but more is recommended.
+ * - MultiSig Support: To enable multisig support, _createLock by passes safeMint if msg.sender == to. Contracts calling this
+ *     contract are expected to be able to handle NFTs being minted to them.
  */
 contract VotingEscrowV2Upgradeable is
     Initializable,
@@ -190,7 +197,11 @@ contract VotingEscrowV2Upgradeable is
             if (unlockTime > block.timestamp + MAX_TIME) revert LockDurationTooLong();
         }
 
-        _safeMint(to, newTokenId);
+        if (_msgSender() != to) {
+            _safeMint(to, newTokenId);
+        } else {
+            _mint(to, newTokenId);
+        }
         _lockDetails[newTokenId].startTime = block.timestamp;
         /// @dev Checkpoint created in _updateLock
         _updateLock(newTokenId, value, unlockTime, _lockDetails[newTokenId], permanent, depositType);
@@ -568,6 +579,10 @@ contract VotingEscrowV2Upgradeable is
         returns (uint256)
     {
         return edStore.getAdjustedGlobalVotes(block.timestamp.toUint48());
+    }
+
+    function maxTime() external view override returns (uint256) {
+        return MAX_TIME;
     }
 
     /*///////////////////////////////////////////////////////////////

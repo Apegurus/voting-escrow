@@ -110,4 +110,6 @@ interface IVotingEscrowV2Upgradeable is IVotes, IERC721EnumerableUpgradeable {
     function burn(uint256 _tokenId) external;
 
     function decimals() external view returns (uint8);
+
+    function maxTime() external view returns (uint256);
 }

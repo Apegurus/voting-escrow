@@ -6,7 +6,7 @@ import {Checkpoints} from "../libraries/Checkpoints.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 
-interface IVotingEscrow is IERC5805, IERC721Enumerable {
+interface IVotingEscrowV2 is IERC5805, IERC721Enumerable {
     struct LockDetails {
         uint256 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started
@@ -111,4 +111,6 @@ interface IVotingEscrow is IERC5805, IERC721Enumerable {
     function burn(uint256 _tokenId) external;
 
     function decimals() external view returns (uint8);
+
+    function maxTime() external view returns (uint256);
 }
