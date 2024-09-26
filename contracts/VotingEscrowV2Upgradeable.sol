@@ -1,24 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.13;
 
-import {ERC721, ERC721Enumerable, IERC165} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {IERC721EnumerableUpgradeable, ERC721EnumerableUpgradeable, IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC5725} from "./erc5725/ERC5725.sol";
-import {IVotingEscrowV2} from "./interfaces/IVotingEscrowV2.sol";
-/// @dev Importing IERC5805, IERC6372, and IVotes directly to add override defectives
-import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
-import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
-import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
-import {Time} from "./libraries/Time.sol";
-import {IVeArtProxy} from "./interfaces/IVeArtProxy.sol";
+import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {ERC5725Upgradeable} from "./erc5725/ERC5725Upgradeable.sol";
+import {IVotingEscrowV2Upgradeable, IVotes} from "./interfaces/IVotingEscrowV2Upgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+import {IVeArtProxy} from "./interfaces/IVeArtProxy.sol";
+import {SafeCastLibrary} from "./libraries/SafeCastLibrary.sol";
 import {EscrowDelegateCheckpoints, Checkpoints} from "./libraries/EscrowDelegateCheckpoints.sol";
 import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
 
@@ -37,8 +32,15 @@ import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
  * - MultiSig Support: To enable multisig support, _createLock by passes safeMint if msg.sender == to. Contracts calling this
  *     contract are expected to be able to handle NFTs being minted to them.
  */
-contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotingEscrowV2, EIP712 {
-    using SafeERC20 for IERC20;
+contract VotingEscrowV2Upgradeable is
+    Initializable,
+    IVotingEscrowV2Upgradeable,
+    ERC5725Upgradeable,
+    EscrowDelegateStorage,
+    EIP712Upgradeable,
+    ReentrancyGuard
+{
+    using SafeERC20Upgradeable for IERC20Upgradeable;
     using SafeCastLibrary for uint256;
     using EscrowDelegateCheckpoints for EscrowDelegateCheckpoints.EscrowDelegateStore;
 
@@ -52,7 +54,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     }
 
     /// @notice The token being locked
-    IERC20 public _token;
+    IERC20Upgradeable public _token;
     /// @notice Total locked supply
     uint256 public supply;
     uint8 public constant decimals = 18;
@@ -68,20 +70,36 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     error VotesExpiredSignature(uint256 expiry);
 
     /**
-     * @dev Initializes the contract by setting a `name`, `symbol`, `version` and `mainToken`.
+     * @notice The constructor is disabled for this upgradeable contract.
      */
-    constructor(
+    constructor() {
+        /// @dev Disable the initializers for implementation contracts to ensure that the contract is not left uninitialized.
+        _disableInitializers();
+    }
+
+    /**
+     * @dev Initializes the contract with the given parameters.
+     * @param _name The name to set for the token.
+     * @param _symbol The symbol to set for the token.
+     * @param version The version of the contract.
+     * @param mainToken The main token address that will be locked in the escrow.
+     */
+    function initialize(
         string memory _name,
         string memory _symbol,
         string memory version,
-        IERC20 mainToken
+        IERC20Upgradeable mainToken
     )
-        // address _artProxy
-        ERC721(_name, _symbol)
-        EIP712(_name, version)
+        public
+        // address _artProxy // NOTE: Removed for local testing
+        initializer
     {
+        __ERC5725_init(_name, _symbol);
+        __EIP712_init(_name, version);
         _token = mainToken;
-        // artProxy = _artProxy;
+        // artProxy = _artProxy; // NOTE: Removed for local testing
+        // Reset MAX_TIME in proxy storage
+        MAX_TIME = uint256(uint128(EscrowDelegateCheckpoints.MAX_TIME));
     }
 
     modifier checkAuthorized(uint256 _tokenId) {
@@ -114,8 +132,8 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      */
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override(ERC5725, IERC165) returns (bool supported) {
-        return interfaceId == type(IVotingEscrowV2).interfaceId || super.supportsInterface(interfaceId);
+    ) public view virtual override(ERC5725Upgradeable, IERC165Upgradeable) returns (bool supported) {
+        return interfaceId == type(IVotingEscrowV2Upgradeable).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /**
@@ -322,8 +340,8 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     /// @param _newLocked New locked amount / end lock time for the user
     function _checkpointLock(
         uint256 _tokenId,
-        IVotingEscrowV2.LockDetails memory _oldLocked,
-        IVotingEscrowV2.LockDetails memory _newLocked
+        IVotingEscrowV2Upgradeable.LockDetails memory _oldLocked,
+        IVotingEscrowV2Upgradeable.LockDetails memory _newLocked
     ) internal {
         edStore.checkpoint(
             _tokenId,
@@ -342,7 +360,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function increaseAmount(uint256 _tokenId, uint256 _value) external nonReentrant {
         if (_value == 0) revert ZeroAmount();
 
-        IVotingEscrowV2.LockDetails memory oldLocked = _lockDetails[_tokenId];
+        IVotingEscrowV2Upgradeable.LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (_ownerOf(_tokenId) == address(0)) revert NoLockFound();
         if (oldLocked.endTime <= block.timestamp && !oldLocked.isPermanent) revert LockExpired();
 
@@ -401,14 +419,14 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @param _tokenId The id of the token to claim the payout for
      */
     function _claim(uint256 _tokenId) internal validToken(_tokenId) nonReentrant checkAuthorized(_tokenId) {
-        IVotingEscrowV2.LockDetails memory oldLocked = _lockDetails[_tokenId];
+        IVotingEscrowV2Upgradeable.LockDetails memory oldLocked = _lockDetails[_tokenId];
         if (oldLocked.isPermanent) revert PermanentLock();
 
         uint256 amountClaimed = claimablePayout(_tokenId);
         if (amountClaimed == 0) revert LockNotExpired();
 
         // Reset the lock details
-        _lockDetails[_tokenId] = IVotingEscrowV2.LockDetails(0, 0, 0, false);
+        _lockDetails[_tokenId] = IVotingEscrowV2Upgradeable.LockDetails(0, 0, 0, false);
         // Update the total supply
         uint256 supplyBefore = supply;
         supply -= amountClaimed;
@@ -422,7 +440,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         // IERC5725 - Update the total amount claimed
         _payoutClaimed[_tokenId] += amountClaimed;
         // Transfer the claimed amount to the sender
-        IERC20(_payoutToken(_tokenId)).safeTransfer(msg.sender, amountClaimed);
+        IERC20Upgradeable(_payoutToken(_tokenId)).safeTransfer(msg.sender, amountClaimed);
 
         emit SupplyUpdated(supplyBefore, supply);
     }
@@ -431,7 +449,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
      * @notice Claims the payout for a token
      * @param _tokenId The id of the token to claim the payout for
      */
-    function claim(uint256 _tokenId) external override(ERC5725) {
+    function claim(uint256 _tokenId) external override(ERC5725Upgradeable) {
         _claim(_tokenId);
     }
 
@@ -443,11 +461,11 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     function merge(uint256 _from, uint256 _to) external nonReentrant checkAuthorized(_from) checkAuthorized(_to) {
         if (_from == _to) revert SameNFT();
 
-        IVotingEscrowV2.LockDetails memory oldLockedTo = _lockDetails[_to];
+        IVotingEscrowV2Upgradeable.LockDetails memory oldLockedTo = _lockDetails[_to];
         if (oldLockedTo.amount == 0) revert ZeroAmount();
         if (oldLockedTo.endTime <= block.timestamp && !oldLockedTo.isPermanent) revert LockExpired();
 
-        IVotingEscrowV2.LockDetails memory oldLockedFrom = _lockDetails[_from];
+        IVotingEscrowV2Upgradeable.LockDetails memory oldLockedFrom = _lockDetails[_from];
         if (oldLockedFrom.amount == 0) revert ZeroAmount();
         if (oldLockedFrom.isPermanent == true && oldLockedFrom.isPermanent != oldLockedTo.isPermanent)
             revert PermanentLockMismatch();
@@ -554,7 +572,12 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         return edStore.getFirstEscrowPoint(_tokenId);
     }
 
-    function totalSupply() public view override(ERC721Enumerable, IERC721Enumerable) returns (uint256) {
+    function totalSupply()
+        public
+        view
+        override(ERC721EnumerableUpgradeable, IERC721EnumerableUpgradeable)
+        returns (uint256)
+    {
         return edStore.getAdjustedGlobalVotes(block.timestamp.toUint48());
     }
 
@@ -694,6 +717,9 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         bytes32 r,
         bytes32 s
     ) external override(IVotes) {
+        // Removed for gas considerations. The code below uncommented adds 1.289 kbs to the contract size.
+        revert("delegateBySig: size cut");
+        /*
         if (delegatee == msg.sender || delegatee == address(0)) revert InvalidDelegatee();
 
         bytes32 domainSeparator = _domainSeparatorV4();
@@ -704,6 +730,7 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
         if (nonce != nonces[signatory]++) revert InvalidNonce();
         if (block.timestamp > expiry) revert VotesExpiredSignature(expiry);
         return _delegate(signatory, delegatee);
+        */
     }
 
     /**
@@ -735,46 +762,16 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     }
 
     /*///////////////////////////////////////////////////////////////
-                           @dev See {IERC6372}.
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @dev The clock was incorrectly modified.
-     */
-    error ERC6372InconsistentClock();
-
-    /**
-     * @notice Clock used for flagging checkpoints.
-     * @return Current timestamp
-     */
-    function clock() public view virtual override(IERC6372) returns (uint48) {
-        return Time.timestamp();
-    }
-
-    /**
-     * @notice Machine-readable description of the clock as specified in EIP-6372.
-     * @return The clock mode
-     */
-    // solhint-disable-next-line func-name-mixedcase
-    function CLOCK_MODE() public view virtual override(IERC6372) returns (string memory) {
-        // Check that the clock was not modified
-        if (clock() != Time.timestamp()) {
-            revert ERC6372InconsistentClock();
-        }
-        return "mode=timestamp";
-    }
-
-    /*///////////////////////////////////////////////////////////////
                            @dev See {IERC5725}.
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev See {ERC5725}.
+     * @dev See {ERC5725Upgradeable}.
      */
     function vestedPayoutAtTime(
         uint256 tokenId,
         uint256 timestamp
-    ) public view override(ERC5725) validToken(tokenId) returns (uint256 payout) {
+    ) public view override(ERC5725Upgradeable) validToken(tokenId) returns (uint256 payout) {
         if (timestamp >= _endTime(tokenId)) {
             return _payout(tokenId);
         }
@@ -782,34 +779,34 @@ contract VotingEscrow is EscrowDelegateStorage, ERC5725, ReentrancyGuard, IVotin
     }
 
     /**
-     * @dev See {ERC5725}.
+     * @dev See {ERC5725Upgradeable}.
      */
     function _payoutToken(uint256 /*tokenId*/) internal view override returns (address) {
         return address(_token);
     }
 
     /**
-     * @dev See {ERC5725}.
+     * @dev See {ERC5725Upgradeable}.
      */
     function _payout(uint256 tokenId) internal view override returns (uint256) {
         return _lockDetails[tokenId].amount;
     }
 
     /**
-     * @dev See {ERC5725}.
+     * @dev See {ERC5725Upgradeable}.
      */
     function _startTime(uint256 tokenId) internal view override returns (uint256) {
         return _lockDetails[tokenId].startTime;
     }
 
     /**
-     * @dev See {ERC5725}.
+     * @dev See {ERC5725Upgradeable}.
      */
     function _endTime(uint256 tokenId) internal view override returns (uint256) {
         return _lockDetails[tokenId].endTime;
     }
 
-    function token() external view returns (IERC20) {
+    function token() external view returns (IERC20Upgradeable) {
         return _token;
     }
 

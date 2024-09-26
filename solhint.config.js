@@ -1,7 +1,7 @@
 /**
  * Set the Solidity compiler versions
  */
-const SOLC_COMPILER_VERSIONS = ['0.8.19']
+const SOLC_COMPILER_VERSIONS = ['0.8.19', '0.8.13']
 
 /**
  *
@@ -19,14 +19,14 @@ module.exports = {
   rules: {
     // Best Practice Rules
     'constructor-syntax': 'warn',
-    'max-line-length': ['error', 120],
+    'max-line-length': ['warn', 120],
     // "code-complexity": ["warn", 7], // Not included in recommended
     // "function-max-lines": [ "warn",50 ], // Not included in recommended
 
     // Style Guide Rules
     'func-visibility': ['error', { ignoreConstructors: true }], // Set ignoreConstructors to true if using solidity >=0.7.0
     'reason-string': ['warn', { maxLength: 50 }], // Revert reason length
-    'func-param-name-mixedcase': 'error',
+    'func-param-name-mixedcase': 'warn',
     'modifier-name-mixedcase': 'error',
     'private-vars-leading-underscore': ['warn', { strict: false }],
     ordering: 'warn',

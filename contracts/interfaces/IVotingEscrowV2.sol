@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity 0.8.13;
 
 import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import {Checkpoints} from "../libraries/Checkpoints.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 
-interface IVotingEscrow is IERC5805 {
+interface IVotingEscrowV2 is IERC5805, IERC721Enumerable {
     struct LockDetails {
         uint256 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started
@@ -47,6 +50,7 @@ interface IVotingEscrow is IERC5805 {
     error InvalidDelegatee();
     error InvalidSignature();
     error InvalidSignatureS();
+    error InvalidWeights();
     error LockDurationNotInFuture();
     error LockDurationTooLong();
     error LockExpired();
@@ -54,7 +58,59 @@ interface IVotingEscrow is IERC5805 {
     error NoLockFound();
     error NotPermanentLock();
     error PermanentLock();
+    error PermanentLockMismatch();
     error SameNFT();
     error SignatureExpired();
     error ZeroAmount();
+    error LockHoldsValue();
+    error NotLockOwner();
+
+    function supply() external view returns (uint);
+
+    function token() external view returns (IERC20);
+
+    function balanceOfNFT(uint256 _tokenId) external view returns (uint256);
+    function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256);
+
+    function delegates(uint256 tokenId, uint48 timestamp) external view returns (address);
+
+    function lockDetails(uint256 tokenId) external view returns (LockDetails calldata);
+
+    function isApprovedOrOwner(address user, uint tokenId) external view returns (bool);
+
+    function getPastEscrowPoint(
+        uint256 _tokenId,
+        uint256 _timePoint
+    ) external view returns (Checkpoints.Point memory, uint48);
+
+    function getFirstEscrowPoint(uint256 _tokenId) external view returns (Checkpoints.Point memory, uint48);
+
+    function checkpoint() external;
+
+    function increaseAmount(uint256 _tokenId, uint256 _value) external;
+
+    function createLockFor(
+        uint256 _value,
+        uint256 _lockDuration,
+        address _to,
+        bool _permanent
+    ) external returns (uint256);
+
+    function createDelegatedLockFor(
+        uint256 _value,
+        uint256 _lockDuration,
+        address _to,
+        address _delegatee,
+        bool _permanent
+    ) external returns (uint256);
+
+    function split(uint256[] memory _weights, uint256 _tokenId) external;
+
+    function merge(uint256 _from, uint256 _to) external;
+
+    function burn(uint256 _tokenId) external;
+
+    function decimals() external view returns (uint8);
+
+    function maxTime() external view returns (uint256);
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // This file was derived from OpenZeppelin Contracts (last updated v5.0.0) (utils/structs/Checkpoints.sol)
 
-pragma solidity 0.8.19;
+pragma solidity ^0.8.0;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -131,6 +131,20 @@ library Checkpoints {
             return (false, 0, blankPoint());
         } else {
             Checkpoint memory ckpt = _unsafeAccess(self._checkpoints, pos - 1);
+            return (true, ckpt._key, ckpt._value);
+        }
+    }
+
+    /**
+     * @dev Returns whether there is a checkpoint in the structure (i.e. it is not empty), and if so the key and value
+     * in the most recent checkpoint.
+     */
+    function firstCheckpoint(Trace storage self) internal view returns (bool exists, uint48 _key, Point memory _value) {
+        uint256 pos = self._checkpoints.length;
+        if (pos == 0) {
+            return (false, 0, blankPoint());
+        } else {
+            Checkpoint memory ckpt = _unsafeAccess(self._checkpoints, 0);
             return (true, ckpt._key, ckpt._value);
         }
     }

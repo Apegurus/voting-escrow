@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.13;
 
-import {ERC721Enumerable, IERC165} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 /// @dev Official ERC-5725 interface
-import {IERC5725} from "@erc-5725/interfaces/IERC5725.sol";
+import {IERC5725Upgradeable, IERC165Upgradeable} from "./IERC5725Upgradeable.sol";
 import {IERC721Errors} from "../interfaces/IERC721Errors.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-abstract contract ERC5725 is IERC5725, ERC721Enumerable, IERC721Errors {
-    using SafeERC20 for IERC20;
+abstract contract ERC5725Upgradeable is Initializable, IERC5725Upgradeable, ERC721EnumerableUpgradeable, IERC721Errors {
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     /// @dev mapping for claimed payouts
     mapping(uint256 => uint256) /*tokenId*/ /*claimed*/ internal _payoutClaimed;
@@ -19,6 +20,20 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable, IERC721Errors {
 
     /// @dev Mapping from owner to operator approvals
     mapping(address => mapping(address => bool)) /* owner */ /*(operator, isApproved)*/ internal _operatorApprovals;
+
+    /// @dev Reserved storage space to allow for layout changes in the future.
+    uint256[50] private __gap;
+
+    constructor() {
+        /// @dev Disable the initializers for implementation contracts to ensure that the contract is not left uninitialized.
+        _disableInitializers();
+    }
+
+    function __ERC5725_init(string memory name_, string memory symbol_) internal initializer {
+        __ERC721_init(name_, symbol_);
+        /// @dev Currently this call does nothing, but it is left here for future compatibility.
+        __ERC721Enumerable_init();
+    }
 
     /**
      * @notice Checks if the tokenId exists and its valid
@@ -33,100 +48,102 @@ abstract contract ERC5725 is IERC5725, ERC721Enumerable, IERC721Errors {
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
-    function claim(uint256 tokenId) external virtual override(IERC5725);
+    function claim(uint256 tokenId) external virtual override(IERC5725Upgradeable);
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
-    function setClaimApprovalForAll(address operator, bool approved) external override(IERC5725) {
+    function setClaimApprovalForAll(address operator, bool approved) external override(IERC5725Upgradeable) {
         _setClaimApprovalForAll(operator, approved);
         emit ClaimApprovalForAll(msg.sender, operator, approved);
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function setClaimApproval(
         address operator,
         bool approved,
         uint256 tokenId
-    ) external override(IERC5725) validToken(tokenId) {
+    ) external override(IERC5725Upgradeable) validToken(tokenId) {
         _setClaimApproval(operator, tokenId);
         emit ClaimApproval(msg.sender, operator, tokenId, approved);
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
-    function vestedPayout(uint256 tokenId) public view override(IERC5725) returns (uint256 payout) {
+    function vestedPayout(uint256 tokenId) public view override(IERC5725Upgradeable) returns (uint256 payout) {
         return vestedPayoutAtTime(tokenId, block.timestamp);
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function vestedPayoutAtTime(
         uint256 tokenId,
         uint256 timestamp
-    ) public view virtual override(IERC5725) returns (uint256 payout);
+    ) public view virtual override(IERC5725Upgradeable) returns (uint256 payout);
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function vestingPayout(
         uint256 tokenId
-    ) public view override(IERC5725) validToken(tokenId) returns (uint256 payout) {
+    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (uint256 payout) {
         return _payout(tokenId) - vestedPayout(tokenId);
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function claimablePayout(
         uint256 tokenId
-    ) public view override(IERC5725) validToken(tokenId) returns (uint256 payout) {
+    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (uint256 payout) {
         return vestedPayout(tokenId) - _payoutClaimed[tokenId];
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function claimedPayout(
         uint256 tokenId
-    ) public view override(IERC5725) validToken(tokenId) returns (uint256 payout) {
+    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (uint256 payout) {
         return _payoutClaimed[tokenId];
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function vestingPeriod(
         uint256 tokenId
-    ) public view override(IERC5725) validToken(tokenId) returns (uint256 vestingStart, uint256 vestingEnd) {
+    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (uint256 vestingStart, uint256 vestingEnd) {
         return (_startTime(tokenId), _endTime(tokenId));
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
-    function payoutToken(uint256 tokenId) public view override(IERC5725) validToken(tokenId) returns (address token) {
+    function payoutToken(
+        uint256 tokenId
+    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (address token) {
         return _payoutToken(tokenId);
     }
 
     /**
      * @dev See {IERC165-supportsInterface}.
-     * IERC5725 interfaceId = 0xbd3a202b
+     * IERC5725Upgradeable interfaceId = 0xbd3a202b
      */
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override(ERC721Enumerable, IERC165) returns (bool supported) {
-        return interfaceId == type(IERC5725).interfaceId || super.supportsInterface(interfaceId);
+    ) public view virtual override(ERC721EnumerableUpgradeable, IERC165Upgradeable) returns (bool supported) {
+        return interfaceId == type(IERC5725Upgradeable).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /**
-     * @dev See {IERC5725}.
+     * @dev See {IERC5725Upgradeable}.
      */
     function getClaimApproved(uint256 tokenId) public view returns (address operator) {
         return _tokenIdApprovals[tokenId];

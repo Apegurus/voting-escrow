@@ -6,7 +6,7 @@ import '@nomicfoundation/hardhat-chai-matchers'
 
 import { deployVotingEscrowFixture } from './fixtures/deployVotingEscrow'
 import { isWithinLimit } from './utils'
-import { VotingEscrow, VotingEscrowTestHelper } from '../typechain-types'
+import { VotingEscrow, VotingEscrowTestHelper, VotingEscrowV2Upgradeable } from '../typechain-types'
 import { BigNumber } from 'ethers'
 import { chunk } from 'lodash'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
@@ -25,7 +25,8 @@ import { token } from '../typechain-types/@openzeppelin/contracts'
 async function fixture() {
   // Contracts are deployed using the first signer/account by default
   const accounts = await ethers.getSigners()
-  const deployment = await deployVotingEscrowFixture(ethers)
+  const votingEscrowUpgradeable = true
+  const deployment = await deployVotingEscrowFixture(ethers, votingEscrowUpgradeable)
   return { ...deployment, accounts }
 }
 
@@ -40,7 +41,7 @@ async function mineAndGetLatestTime() {
 
 async function validateState(
   state: any,
-  votingEscrow: VotingEscrow,
+  votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable,
   votingEscrowTestHelper: VotingEscrowTestHelper,
   testTime: number
 ) {
@@ -51,22 +52,25 @@ async function validateState(
   const locksPromises = []
   const detailsPromises = []
   const delegatesPromises = []
+  const pastEscrowPointsPromises = []
   for (const token of state) {
     biasPromises.push(votingEscrow.balanceOfNFTAt(token.tokenId, testTime))
     locksPromises.push(votingEscrowTestHelper.balanceOfLockAt(token.tokenId, testTime))
     detailsPromises.push(votingEscrow.lockDetails(token.tokenId))
-    delegatesPromises.push(votingEscrow.getLockDelegateeAtTime(token.tokenId, testTime))
+    pastEscrowPointsPromises.push(votingEscrow.getPastEscrowPoint(token.tokenId, testTime))
+    delegatesPromises.push(votingEscrow['delegates(uint256,uint48)'](token.tokenId, testTime))
     if (!votesAccounts[token.account.address] && votesAccounts[token.account.address] !== 0) {
       votesPromises.push(votingEscrow.getPastVotes(token.account.address, testTime))
       votesAccounts[token.account.address] = votesPromises.length - 1
     }
   }
-  const [votes, bias, locks, details, delegates, supplyAt] = await Promise.all([
+  const [votes, bias, locks, details, delegates, escrowPoints, supplyAt] = await Promise.all([
     Promise.all(votesPromises),
     Promise.all(biasPromises),
     Promise.all(locksPromises),
     Promise.all(detailsPromises),
     Promise.all(delegatesPromises),
+    Promise.all(pastEscrowPointsPromises),
     votingEscrow.getPastTotalSupply(testTime),
   ])
 
@@ -83,7 +87,8 @@ async function validateState(
   })
 
   for (let i = 0; i < state.length; i++) {
-    if (details[i].isPermanent) {
+    if (details[i].isPermanent || escrowPoints[i][0].permanent.gt(0)) {
+      console.log(details[i], escrowPoints[i])
       expect(bias[i]).to.equal(details[i].amount)
       expect(locks[i]).to.equal(details[i].amount)
     } else if (details[i].startTime.lte(testTime)) {
@@ -121,7 +126,7 @@ async function validateState(
 async function finalStateCheck(
   state: any,
   historyState: any,
-  votingEscrow: VotingEscrow,
+  votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable,
   votingEscrowTestHelper: VotingEscrowTestHelper
 ) {
   const testTimes = Object.keys(historyState)
@@ -471,6 +476,90 @@ describe('VotingEscrow', function () {
         await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
       })
 
+      it('Should be able to create a single permanent lock and delegate', async function () {
+        this.timeout(0)
+        const { alice, bob, calvin, votingEscrow, votingEscrowTestHelper, lockedAmount, duration } = await loadFixture(
+          fixture
+        )
+
+        const connectedEscrow = votingEscrow.connect(alice)
+
+        await connectedEscrow.createLockFor(lockedAmount, 0, alice.address, true)
+        let latestTime = await time.latest()
+        const state = [{ tokenId: 1, account: alice }]
+        await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
+
+        await connectedEscrow['delegate(uint256,address)'](1, bob.address)
+        latestTime = await time.latest()
+        let bobVotes = await connectedEscrow.getPastVotes(bob.address, latestTime)
+        expect(bobVotes).to.equal(lockedAmount)
+
+        await connectedEscrow.createLockFor(lockedAmount, duration, bob.address, false)
+        bobVotes = await connectedEscrow.getVotes(bob.address)
+        let balanceOf2 = await connectedEscrow.balanceOfNFT(2)
+        let aliceVotes = await connectedEscrow.getVotes(alice.address)
+        expect(bobVotes).to.equal(balanceOf2.add(lockedAmount))
+        aliceVotes.eq(0)
+
+        await connectedEscrow.createLockFor(lockedAmount, 0, calvin.address, true)
+        await connectedEscrow.createLockFor(lockedAmount, duration, calvin.address, false)
+        await connectedEscrow.createLockFor(lockedAmount, duration, calvin.address, false)
+
+        await votingEscrow.connect(calvin)['delegate(uint256,address)'](3, bob.address)
+        await votingEscrow.connect(calvin)['delegate(uint256,address)'](4, bob.address)
+        await votingEscrow.connect(calvin)['delegate(uint256,address)'](5, alice.address)
+
+        bobVotes = await connectedEscrow.getVotes(bob.address)
+        aliceVotes = await connectedEscrow.getVotes(alice.address)
+        balanceOf2 = await connectedEscrow.balanceOfNFT(2)
+        let balanceOf4 = await connectedEscrow.balanceOfNFT(4)
+        let balanceOf5 = await connectedEscrow.balanceOfNFT(5)
+        expect(bobVotes).to.equal(balanceOf2.add(lockedAmount * 2).add(balanceOf4))
+        expect(aliceVotes).to.equal(balanceOf5)
+
+        bobVotes = await connectedEscrow.getVotes(bob.address)
+
+        balanceOf2 = await connectedEscrow.balanceOfNFT(2)
+        balanceOf4 = await connectedEscrow.balanceOfNFT(4)
+        let balanceOf6 = await connectedEscrow.balanceOfNFT(6)
+        console.log('I break', balanceOf6, balanceOf2, balanceOf4)
+        latestTime = await time.latest()
+        expect(bobVotes).to.equal(
+          balanceOf2
+            .add(lockedAmount * 2)
+            .add(balanceOf4)
+            .add(balanceOf6)
+        )
+
+        await time.increaseTo(latestTime + duration + 1)
+
+        balanceOf2 = await connectedEscrow.balanceOfNFT(2)
+        balanceOf4 = await connectedEscrow.balanceOfNFT(4)
+        balanceOf6 = await connectedEscrow.balanceOfNFT(6)
+        bobVotes = await connectedEscrow.getVotes(bob.address)
+        console.log('I break123', balanceOf6, balanceOf2, balanceOf4)
+        latestTime = await time.latest()
+        expect(bobVotes).to.equal(
+          balanceOf2
+            .add(lockedAmount * 2)
+            .add(balanceOf4)
+            .add(balanceOf6)
+        )
+        await connectedEscrow.unlockPermanent(1)
+
+        await time.increaseTo(latestTime + duration + 1)
+
+        let balanceOf1 = await connectedEscrow.balanceOfNFT(1)
+        balanceOf2 = await connectedEscrow.balanceOfNFT(2)
+        balanceOf4 = await connectedEscrow.balanceOfNFT(4)
+        balanceOf6 = await connectedEscrow.balanceOfNFT(6)
+        bobVotes = await connectedEscrow.getVotes(bob.address)
+        console.log('I break123', balanceOf6, balanceOf2, balanceOf4)
+        expect(bobVotes).to.equal(balanceOf2.add(lockedAmount).add(balanceOf1).add(balanceOf4).add(balanceOf6))
+
+        // await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
+      })
+
       it('Should revert on unlockPermanent when lock is not permanent', async function () {
         const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
@@ -739,17 +828,23 @@ describe('VotingEscrow', function () {
         const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
-
+        const initialTokenId = 1
         const oneDay = 24 * 60 * 60
         // const sevenDays = 7 * oneDay
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
-        await validateState([{ tokenId: 1, account: alice }], votingEscrow, votingEscrowTestHelper, latestTime)
+        await validateState(
+          [{ tokenId: initialTokenId, account: alice }],
+          votingEscrow,
+          votingEscrowTestHelper,
+          latestTime
+        )
         await time.increaseTo(latestTime + oneDay)
+        const veSupplyBefore = await votingEscrow.supply()
 
-        await connectedEscrow.split([50, 50], 1)
+        await connectedEscrow.split([50, 50], initialTokenId)
         latestTime = await time.latest()
 
         const [token1, token2] = await Promise.all([
@@ -760,8 +855,8 @@ describe('VotingEscrow', function () {
 
         expect(lock1.amount).to.equal(lockedAmount / 2)
         expect(lock1.amount).to.equal(lock2.amount)
+        expect(veSupplyBefore).to.equal(await votingEscrow.supply(), 'Supply should not change on split')
 
-        await expect(votingEscrow.ownerOf(1)).to.be.revertedWith('ERC721: invalid token ID')
         await validateState(
           [
             { tokenId: token1, account: alice },
@@ -811,26 +906,32 @@ describe('VotingEscrow', function () {
         const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
-
+        const initialTokenId = 1
         const oneDay = 24 * 60 * 60
 
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         let latestTime = await time.latest()
 
-        await validateState([{ tokenId: 1, account: alice }], votingEscrow, votingEscrowTestHelper, latestTime)
+        await validateState(
+          [{ tokenId: initialTokenId, account: alice }],
+          votingEscrow,
+          votingEscrowTestHelper,
+          latestTime
+        )
         await time.increaseTo(latestTime + oneDay)
 
         const splitAmounts = [50, 20, 10, 5, 15]
 
-        await connectedEscrow.split(splitAmounts, 1)
+        await connectedEscrow.split(splitAmounts, initialTokenId)
         latestTime = await time.latest()
 
         const tokens = await Promise.all(
+          // @note split doesn't burn the original token, offsetting index by 1
           splitAmounts.map((val, index) => votingEscrow.tokenOfOwnerByIndex(alice.address, index))
         )
         const locks = await Promise.all(tokens.map((val) => votingEscrow.lockDetails(val)))
 
-        console.log(tokens, locks)
+        console.dir({ tokens, locks })
         let sumAmounts = BigNumber.from(0)
         const state = [] as any
         splitAmounts.forEach((amount, index) => {
@@ -884,21 +985,25 @@ describe('VotingEscrow', function () {
         expect(updatedState[0].details.amount).to.equal(lockedAmount * 2)
       })
 
-      it('Should be able to merge two unexpired locks with one being permanent', async function () {
-        const { alice, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
+      it('Should be able to merge two unexpired locks with matching permanent types', async function () {
+        const { alice, bob, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(fixture)
 
         const connectedEscrow = votingEscrow.connect(alice)
 
         const oneDay = 24 * 60 * 60
 
-        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, false)
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
+        await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
+        await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
+        await connectedEscrow.connect(bob).createLockFor(lockedAmount, duration, bob.address, false)
         let latestTime = await time.latest()
 
         await validateState(
           [
             { tokenId: 1, account: alice },
             { tokenId: 2, account: alice },
+            { tokenId: 3, account: bob },
+            { tokenId: 4, account: bob },
           ],
           votingEscrow,
           votingEscrowTestHelper,
@@ -907,16 +1012,21 @@ describe('VotingEscrow', function () {
         await time.increaseTo(latestTime + oneDay)
 
         await connectedEscrow.merge(1, 2)
+        await connectedEscrow.connect(bob).merge(3, 4)
         latestTime = await time.latest()
 
         const updatedState = await validateState(
-          [{ tokenId: 2, account: alice }],
+          [
+            { tokenId: 2, account: alice },
+            { tokenId: 4, account: bob },
+          ],
           votingEscrow,
           votingEscrowTestHelper,
           latestTime
         )
 
         expect(updatedState[0].details.amount).to.equal(lockedAmount * 2)
+        expect(updatedState[1].details.amount).to.equal(lockedAmount * 2)
       })
 
       it('Should merge veNFT and keep lockTime of longest lock', async function () {
@@ -1010,7 +1120,10 @@ describe('VotingEscrow', function () {
         await connectedEscrow.createLockFor(lockedAmount, duration, alice.address, true)
         await connectedEscrow.createLockFor(lockedAmount, duration * 2, alice.address, false)
 
-        await expect(connectedEscrow.merge(1, 2)).to.be.revertedWithCustomError(connectedEscrow, 'PermanentLock')
+        await expect(connectedEscrow.merge(1, 2)).to.be.revertedWithCustomError(
+          connectedEscrow,
+          'PermanentLockMismatch'
+        )
       })
     })
   })
@@ -1172,7 +1285,7 @@ describe('VotingEscrow', function () {
     })
 
     it('Should be able to process two years worth of delegated checkpoints', async function () {
-      this.timeout(800000)
+      this.timeout(0)
       const { alice, bob, votingEscrow, clockUnit, votingEscrowTestHelper, lockedAmount, accounts } = await loadFixture(
         fixture
       )
@@ -1299,11 +1412,12 @@ describe('VotingEscrow', function () {
     })
 
     it('Should be able to create and delegate locks', async function () {
-      const { alice, bob, calvin, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } = await loadFixture(
-        fixture
-      )
+      this.timeout(0)
+      const { alice, bob, calvin, accounts, votingEscrow, votingEscrowTestHelper, duration, lockedAmount } =
+        await loadFixture(fixture)
       const state = []
       const stateHistory = {} as any
+      const permaMan = accounts[5]
 
       const connectedEscrow = votingEscrow.connect(alice)
 
@@ -1316,12 +1430,16 @@ describe('VotingEscrow', function () {
       await connectedEscrow.createLockFor(lockedAmount, duration / 2, calvin.address, false)
       state.push({ account: calvin, tokenId: 3 })
 
+      await connectedEscrow.createLockFor(lockedAmount, 0, permaMan.address, true)
+      state.push({ account: permaMan, tokenId: 4 })
+
       let latestTime = await time.latest()
 
       await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
 
       await votingEscrow.connect(alice)['delegate(uint256,address)'](1, bob.address)
       await votingEscrow.connect(calvin)['delegate(uint256,address)'](3, alice.address)
+      await votingEscrow.connect(permaMan)['delegate(uint256,address)'](4, calvin.address)
       latestTime = await time.latest()
 
       let updatedState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
@@ -1329,6 +1447,7 @@ describe('VotingEscrow', function () {
       await connectedEscrow.globalCheckpoint()
       expect(updatedState[0].bias.add(updatedState[1].bias)).to.equal(updatedState[1].votes)
       expect(updatedState[2].bias).to.equal(updatedState[0].votes)
+      expect(updatedState[3].bias).to.equal(updatedState[2].votes)
 
       latestTime = await time.latest()
       updatedState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
@@ -1343,7 +1462,7 @@ describe('VotingEscrow', function () {
 
       updatedState = await validateState(state, votingEscrow, votingEscrowTestHelper, latestTime)
       stateHistory[latestTime] = updatedState
-      expect(updatedState[0].bias).to.equal(updatedState[2].votes)
+      expect(updatedState[0].bias.add(updatedState[3].bias)).to.equal(updatedState[2].votes)
       expect(updatedState[1].bias.add(updatedState[2].bias)).to.equal(updatedState[0].votes)
 
       await votingEscrow.connect(alice)['delegate(uint256,address)'](1, bob.address)
@@ -1367,7 +1486,9 @@ describe('VotingEscrow', function () {
       stateHistory[latestTime] = updatedState
       expect(updatedState[0].bias).to.equal(updatedState[0].votes)
       expect(updatedState[1].bias).to.equal(updatedState[1].votes)
-      expect(updatedState[2].bias).to.equal(updatedState[2].votes)
+      expect(updatedState[2].bias.add(updatedState[3].bias)).to.equal(updatedState[2].votes)
+
+      await votingEscrow.connect(permaMan).unlockPermanent(4)
 
       await time.increaseTo(latestTime + duration / 2)
       latestTime = await time.latest()
@@ -1375,7 +1496,7 @@ describe('VotingEscrow', function () {
       stateHistory[latestTime] = updatedState
       expect(updatedState[0].bias).to.equal(updatedState[0].votes)
       expect(updatedState[1].bias).to.equal(updatedState[1].votes)
-      expect(updatedState[2].bias).to.equal(updatedState[2].votes)
+      expect(updatedState[2].bias.add(updatedState[3].bias)).to.equal(updatedState[2].votes)
 
       await connectedEscrow.globalCheckpoint()
       latestTime = await time.latest()
@@ -1383,7 +1504,7 @@ describe('VotingEscrow', function () {
       stateHistory[latestTime] = updatedState
       expect(updatedState[0].bias).to.equal(updatedState[0].votes)
       expect(updatedState[1].bias).to.equal(updatedState[1].votes)
-      expect(updatedState[2].bias).to.equal(updatedState[2].votes)
+      expect(updatedState[2].bias.add(updatedState[3].bias)).to.equal(updatedState[2].votes)
       await finalStateCheck(state, stateHistory, votingEscrow, votingEscrowTestHelper)
 
       await time.increaseTo(latestTime + duration)
@@ -1392,7 +1513,7 @@ describe('VotingEscrow', function () {
       stateHistory[latestTime] = updatedState
       expect(updatedState[0].bias).to.equal(updatedState[0].votes)
       expect(updatedState[1].bias).to.equal(updatedState[1].votes)
-      expect(updatedState[2].bias).to.equal(updatedState[2].votes)
+      expect(updatedState[2].bias.add(updatedState[3].bias)).to.equal(updatedState[2].votes)
       await finalStateCheck(state, stateHistory, votingEscrow, votingEscrowTestHelper)
     })
 

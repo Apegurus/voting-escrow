@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.19;
+pragma solidity 0.8.13;
 
-import {VotingEscrow} from "../VotingEscrow.sol";
-import {EscrowDelegateCheckpoints} from "../libraries/EscrowDelegateCheckpoints.sol";
+import {IVotingEscrowV2Upgradeable} from "../VotingEscrowV2Upgradeable.sol";
+import {EscrowDelegateCheckpoints, Checkpoints} from "../libraries/EscrowDelegateCheckpoints.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 
 contract VotingEscrowTestHelper {
-    VotingEscrow public votingEscrow;
+    IVotingEscrowV2Upgradeable public votingEscrow;
     using SafeCastLibrary for uint256;
     using SafeCastLibrary for int128;
 
     constructor(address _votingEscrow) {
-        votingEscrow = VotingEscrow(_votingEscrow);
+        votingEscrow = IVotingEscrowV2Upgradeable(_votingEscrow);
         votingEscrow.token().approve(address(votingEscrow), type(uint256).max);
     }
 
@@ -34,11 +34,12 @@ contract VotingEscrowTestHelper {
     /// @param _timestamp Epoch time to return voting power at
     /// @return balance ser voting power
     function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256 balance) {
-        (uint256 amount, uint256 startTime, uint256 endTime, bool isPermanent) = votingEscrow.lockDetails(_tokenId);
-        if (isPermanent) return amount;
-        if (startTime > _timestamp) return 0;
-        if (endTime < _timestamp) return 0;
-        int128 slope = amount.toInt128() / EscrowDelegateCheckpoints.MAX_TIME;
-        balance = (slope * ((endTime).toInt128() - (_timestamp).toInt128())).toUint256();
+        IVotingEscrowV2Upgradeable.LockDetails memory lockDetails = votingEscrow.lockDetails(_tokenId);
+        (Checkpoints.Point memory point, ) = votingEscrow.getPastEscrowPoint(_tokenId, _timestamp);
+        if (lockDetails.isPermanent || point.permanent > 0) return lockDetails.amount;
+        if (lockDetails.startTime > _timestamp) return 0;
+        if (lockDetails.endTime < _timestamp) return 0;
+        int128 slope = lockDetails.amount.toInt128() / EscrowDelegateCheckpoints.MAX_TIME;
+        balance = (slope * ((lockDetails.endTime).toInt128() - (_timestamp).toInt128())).toUint256();
     }
 }

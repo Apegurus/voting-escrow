@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity ^0.8.0;
 
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
@@ -25,16 +25,16 @@ library EscrowDelegateCheckpoints {
         Checkpoints.Trace _globalCheckpoints;
         /// @notice Mapping of global slope changes
         /// @dev Intended to be exposed with a getter
-        mapping(uint256 timestamp => int128 slopeChange) globalSlopeChanges;
+        mapping(uint256 => int128) globalSlopeChanges;
         /// @notice escrow lock checkpoints
-        mapping(uint256 escrowId => Checkpoints.Trace) _escrowCheckpoints;
+        mapping(uint256 => Checkpoints.Trace) _escrowCheckpoints;
         /// @notice Delegate checkpoints
-        mapping(address delegatee => Checkpoints.Trace) _delegateCheckpoints;
+        mapping(address => Checkpoints.Trace) _delegateCheckpoints;
         /// @notice escrow lock to delegatee mapping
-        mapping(uint256 escrowId => Checkpoints.TraceAddress) _escrowDelegateeAddress;
+        mapping(uint256 => Checkpoints.TraceAddress) _escrowDelegateeAddress;
         /// @notice Delegatee slope changes
         /// @dev Intended to be exposed with a getter
-        mapping(address delegatee => mapping(uint256 timestamp => int128 slopeChange)) delegateeSlopeChanges;
+        mapping(address => mapping(uint256 => int128)) delegateeSlopeChanges;
     }
 
     event CheckpointGlobal(uint48 timestamp, int128 slope, int128 bias, int128 permanent);
@@ -327,9 +327,7 @@ library EscrowDelegateCheckpoints {
             _checkpointDelegatee(store_, oldDelegatee, lastPoint, endTime, false);
         }
         // Delegate to new delegator
-        if (endTime > block.timestamp) {
-            _checkpointDelegatee(store_, delegatee, lastPoint, endTime, true);
-        }
+        _checkpointDelegatee(store_, delegatee, lastPoint, endTime, true);
         _pushAddressAtClock(store_._escrowDelegateeAddress[escrowId], delegatee);
         return (oldDelegatee, delegatee);
     }
@@ -354,16 +352,20 @@ library EscrowDelegateCheckpoints {
         int128 baseBias = lastPoint.bias - (lastPoint.slope * (block.timestamp - lastCheckpoint).toInt128());
 
         if (!increase) {
-            store_.delegateeSlopeChanges[delegateeAddress][endTime] += escrowPoint.slope;
+            if (endTime > block.timestamp) {
+                store_.delegateeSlopeChanges[delegateeAddress][endTime] += escrowPoint.slope;
+                lastPoint.slope = escrowPoint.slope < lastPoint.slope ? lastPoint.slope - escrowPoint.slope : int128(0);
+            }
             lastPoint.bias = escrowPoint.bias < baseBias ? baseBias - escrowPoint.bias : int128(0);
-            lastPoint.slope = escrowPoint.slope < lastPoint.slope ? lastPoint.slope - escrowPoint.slope : int128(0);
             lastPoint.permanent = escrowPoint.permanent < lastPoint.permanent
                 ? lastPoint.permanent - escrowPoint.permanent
                 : int128(0);
         } else {
-            store_.delegateeSlopeChanges[delegateeAddress][endTime] -= escrowPoint.slope;
+            if (endTime > block.timestamp) {
+                store_.delegateeSlopeChanges[delegateeAddress][endTime] -= escrowPoint.slope;
+                lastPoint.slope = lastPoint.slope + escrowPoint.slope;
+            }
             lastPoint.bias = baseBias + escrowPoint.bias;
-            lastPoint.slope = lastPoint.slope + escrowPoint.slope;
             lastPoint.permanent = lastPoint.permanent + escrowPoint.permanent;
         }
         /// @dev bias can be rounded up by lack of precision. If slope is 0 we are out
@@ -419,6 +421,7 @@ library EscrowDelegateCheckpoints {
                 if (testTime > maxTime) break;
             }
         }
+        emit CheckpointDelegate(delegateeAddress, clock(), lastPoint.slope, lastPoint.bias, lastPoint.permanent);
     }
 
     /**
@@ -494,14 +497,40 @@ library EscrowDelegateCheckpoints {
         uint256 timestamp
     ) external view returns (uint256) {
         uint48 clockTime = timestamp.toUint48();
+        (Checkpoints.Point memory lastPoint, ) = getAdjustedEscrow(store_, escrowId, clockTime);
+        if (lastPoint.permanent != 0) return lastPoint.permanent.toUint256();
+        return lastPoint.bias.toUint256();
+    }
+
+    /**
+     * @notice Get the current bias for `escrowId` at `timestamp`
+     * @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
+     * @dev Fetches last escrow point prior to a certain timestamp, then walks forward to timestamp.
+     * @param escrowId NFT for lock
+     * @param timestamp Epoch time to return bias power at
+     * @return NFT bias
+     */
+    function getAdjustedEscrow(
+        EscrowDelegateStore storage store_,
+        uint256 escrowId,
+        uint256 timestamp
+    ) public view returns (Checkpoints.Point memory, uint48) {
+        uint48 clockTime = timestamp.toUint48();
         (bool exists, uint48 ts, Checkpoints.Point memory lastPoint) = store_
             ._escrowCheckpoints[escrowId]
             .upperLookupRecent(clockTime);
-        if (!exists) return 0;
-        if (lastPoint.permanent != 0) return lastPoint.permanent.toUint256();
+        if (!exists) return (lastPoint, ts);
         int128 change = ((lastPoint.slope * uint256(clockTime - ts).toInt128()));
         lastPoint.bias = lastPoint.bias < change ? int128(0) : lastPoint.bias - change;
-        return lastPoint.bias.toUint256();
+        return (lastPoint, ts);
+    }
+
+    function getFirstEscrowPoint(
+        EscrowDelegateStore storage store_,
+        uint256 escrowId
+    ) internal view returns (Checkpoints.Point memory, uint48) {
+        (, uint48 ts, Checkpoints.Point memory point) = store_._escrowCheckpoints[escrowId].firstCheckpoint();
+        return (point, ts);
     }
 
     /// -----------------------------------------------------------------------
