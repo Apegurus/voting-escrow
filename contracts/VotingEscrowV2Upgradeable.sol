@@ -759,7 +759,7 @@ contract VotingEscrowV2Upgradeable is
      * @param delegator The owner of the tokenId delegating votes
      * @param delegatee The account to delegate votes to
      */
-    function _delegate(address delegator, address delegatee) internal nonReentrant {
+    function _delegate(address delegator, address delegatee) internal {
         uint256 balance = balanceOf(delegator);
         address fromDelegate = address(0);
         for (uint256 i = 0; i < balance; i++) {
