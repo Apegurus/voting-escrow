@@ -19,10 +19,8 @@ import {EscrowDelegateStorage} from "./libraries/EscrowDelegateStorage.sol";
 
 /**
  * @title VotingEscrowV2Upgradeable
- * @custom:version 1.1.0
- *   - The storage layout for all version 1.x contracts MUST remain compatible for upgradeability.
  * @dev This contract is used for locking tokens and voting.
- *
+ * - The storage layout for all version 1.x contracts MUST remain compatible for upgradeability.
  * - tokenIds always have a delegatee, with the owner being the default (see createLock)
  * - On transfers, delegation is reset. (See _update)
  *
@@ -77,6 +75,9 @@ contract VotingEscrowV2Upgradeable is
 
     /// @notice The last time a lock was modified. Prevents front-running sale attacks.
     mapping(uint256 => uint256) public lockModifiedAt;
+
+    /// @notice The current version of the contract
+    string public constant override VERSION = "2.1.0";
 
     /// @notice Reserved storage slots for future upgrades
     uint256[50] private __gap;

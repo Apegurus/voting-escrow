@@ -5,11 +5,12 @@ import {IVotes} from "./IVotes.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import {IERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/IERC721EnumerableUpgradeable.sol";
+import {IVersionable} from "./IVersionable.sol";
 
 /**
  * @title Voting Escrow V2 Interface for Upgrades
  */
-interface IVotingEscrowV2 is IVotes, IERC721EnumerableUpgradeable {
+interface IVotingEscrowV2 is IVotes, IERC721EnumerableUpgradeable, IVersionable {
     struct LockDetails {
         uint256 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started
