@@ -53,6 +53,9 @@ contract VotingEscrowV2Upgradeable is
         SPLIT_TYPE
     }
 
+    /// @notice The current version of the contract
+    string public constant override VERSION = "2.1.0";
+
     /// @notice The token being locked
     IERC20Upgradeable public token;
     /// @notice Total locked supply
@@ -75,9 +78,6 @@ contract VotingEscrowV2Upgradeable is
 
     /// @notice The last time a lock was modified. Prevents front-running sale attacks.
     mapping(uint256 => uint256) public lockModifiedAt;
-
-    /// @notice The current version of the contract
-    string public constant override VERSION = "2.1.0";
 
     /// @notice Reserved storage slots for future upgrades
     uint256[50] private __gap;
