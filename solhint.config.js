@@ -30,6 +30,7 @@ module.exports = {
     'modifier-name-mixedcase': 'error',
     'private-vars-leading-underscore': ['warn', { strict: false }],
     ordering: 'warn',
+    quotes: 'warn',
 
     // Security Rules
     'compiler-version': [

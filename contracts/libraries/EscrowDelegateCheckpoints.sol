@@ -6,8 +6,8 @@ import {Checkpoints} from "../libraries/Checkpoints.sol";
 import {Time} from "../libraries/Time.sol";
 
 /**
- * @title CheckPointSystem
- * @dev This contract is used to manage checkpoints in the system.
+ * @title EscrowDelegateCheckpoints
+ * @dev This library is used to manage checkpoints of escrow locks and delegatees.
  */
 library EscrowDelegateCheckpoints {
     using Checkpoints for Checkpoints.Trace;
@@ -26,19 +26,38 @@ library EscrowDelegateCheckpoints {
         /// @notice Mapping of global slope changes
         /// @dev Intended to be exposed with a getter
         mapping(uint256 => int128) globalSlopeChanges;
-        /// @notice escrow lock checkpoints
+        /// @notice Escrow lock checkpoints
         mapping(uint256 => Checkpoints.Trace) _escrowCheckpoints;
         /// @notice Delegate checkpoints
         mapping(address => Checkpoints.Trace) _delegateCheckpoints;
-        /// @notice escrow lock to delegatee mapping
+        /// @notice Escrow lock to delegatee mapping
         mapping(uint256 => Checkpoints.TraceAddress) _escrowDelegateeAddress;
         /// @notice Delegatee slope changes
         /// @dev Intended to be exposed with a getter
         mapping(address => mapping(uint256 => int128)) delegateeSlopeChanges;
     }
 
+    /// @notice Emitted when a global checkpoint is created
+    /// @param timestamp The timestamp of the checkpoint
+    /// @param slope The slope of the checkpoint
+    /// @param bias The bias of the checkpoint
+    /// @param permanent The permanent value of the checkpoint
     event CheckpointGlobal(uint48 timestamp, int128 slope, int128 bias, int128 permanent);
+
+    /// @notice Emitted when a delegate checkpoint is created
+    /// @param delegatee The address of the delegatee
+    /// @param timestamp The timestamp of the checkpoint
+    /// @param slope The slope of the checkpoint
+    /// @param bias The bias of the checkpoint
+    /// @param permanent The permanent value of the checkpoint
     event CheckpointDelegate(address delegatee, uint48 timestamp, int128 slope, int128 bias, int128 permanent);
+
+    /// @notice Emitted when an escrow checkpoint is created
+    /// @param escrowId The ID of the escrow
+    /// @param timestamp The timestamp of the checkpoint
+    /// @param slope The slope of the checkpoint
+    /// @param bias The bias of the checkpoint
+    /// @param permanent The permanent value of the checkpoint
     event CheckpointEscrow(uint256 escrowId, uint48 timestamp, int128 slope, int128 bias, int128 permanent);
 
     /**
@@ -127,7 +146,7 @@ library EscrowDelegateCheckpoints {
 
             if (uNewEndTime > block.timestamp) {
                 // update slope if new lock is greater than old lock and is not permanent or if old lock is permanent
-                if ((uNewEndTime > uOldEndTime)) {
+                if (uNewEndTime > uOldEndTime) {
                     newDslope -= uNewPoint.slope; // old slope disappeared at this point
                     store_.globalSlopeChanges[uNewEndTime] = newDslope;
                 }
@@ -153,6 +172,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to update global checkpoint
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      */
     function globalCheckpoint(EscrowDelegateStore storage store_) external {
         globalCheckpoint(store_, 0, Checkpoints.blankPoint(), Checkpoints.blankPoint());
@@ -160,8 +180,8 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to update global checkpoint with new points
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param escrowId The ID of the escrow lock
-     * - If
      * @param uOldPoint The old point to be updated
      * @param uNewPoint The new point to be updated
      */
@@ -176,7 +196,7 @@ library EscrowDelegateCheckpoints {
 
         {
             // Go over weeks to fill history and calculate what the current point is
-            uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
+            uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > testTime
             uint256 maxTime = testTime + MAX_TIME.toUint256();
 
             while (testTime < block.timestamp) {
@@ -194,7 +214,7 @@ library EscrowDelegateCheckpoints {
                         lastGlobal.bias = 0;
                     }
                     if (lastGlobal.slope < 0) {
-                        lastGlobal.bias = 0;
+                        lastGlobal.slope = 0;
                     }
 
                     lastCheckpoint = testTime;
@@ -222,6 +242,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to calculate total voting power at some point in the past
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param _delegateeAddress The address of the delegatee
      * @param timestamp Time to calculate the total voting power at
      * @return Total voting power at that time
@@ -237,6 +258,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to get delegated votes checkpoint at some point in the past
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param _delegateeAddress The address of the delegatee
      * @param timestamp Time to calculate the total voting power at
      * @return Total voting power at that time
@@ -250,7 +272,7 @@ library EscrowDelegateCheckpoints {
             ._delegateCheckpoints[_delegateeAddress]
             .upperLookupRecent(timestamp);
         if (!exists) return lastPoint;
-        uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
+        uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > testTime
         uint256 maxTime = testTime + MAX_TIME.toUint256();
         while (testTime < timestamp) {
             testTime += CLOCK_UNIT;
@@ -281,6 +303,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @notice Public function to get the delegatee of an escrow lock
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param escrowId The ID of the escrow
      * @return The address of the delegate
      */
@@ -290,6 +313,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @notice Public function to get the delegatee of an escrow lock
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param escrowId The ID of the escrow lock
      * @param timestamp The timestamp to get the delegate at
      * @return The address of the delegate
@@ -304,6 +328,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to record escrow delegation checkpoints. Used by voting system.
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param escrowId The ID of the escrow lock
      * @param delegatee The address of the delegatee
      * @param endTime The end time of the delegation
@@ -315,7 +340,9 @@ library EscrowDelegateCheckpoints {
         uint256 endTime
     ) external returns (address oldDelegatee, address newDelegatee) {
         oldDelegatee = store_._escrowDelegateeAddress[escrowId].latest();
-        if (oldDelegatee == delegatee) return (oldDelegatee, delegatee);
+        if (oldDelegatee == delegatee) {
+            return (oldDelegatee, delegatee);
+        }
 
         (, uint48 ts, Checkpoints.Point memory lastPoint) = store_._escrowCheckpoints[escrowId].latestCheckpoint();
         lastPoint.bias -= ((lastPoint.slope * (block.timestamp - ts).toInt128()));
@@ -323,7 +350,7 @@ library EscrowDelegateCheckpoints {
             lastPoint.bias = 0;
         }
 
-        if (oldDelegatee != delegatee && oldDelegatee != address(0)) {
+        if (oldDelegatee != address(0)) {
             _checkpointDelegatee(store_, oldDelegatee, lastPoint, endTime, false);
         }
         // Delegate to new delegator
@@ -335,6 +362,7 @@ library EscrowDelegateCheckpoints {
     /**
      * @dev Function to update delegatee's `delegatedBalance` by `balance`.
      *      Only updates if delegating to a new delegatee.
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param delegateeAddress The address of the delegatee
      * @param escrowPoint The point of the escrow
      * @param endTime The end time of the delegation
@@ -378,6 +406,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to update delegatee's checkpoint
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param delegateeAddress The address of the delegatee
      * @return lastPoint The last point of the delegatee
      * @return lastCheckpoint The last checkpoint time of the delegatee
@@ -393,7 +422,7 @@ library EscrowDelegateCheckpoints {
         lastCheckpoint = ts;
         if (exists) {
             // Go over days to fill history and calculate what the current point is
-            uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > tesTime
+            uint48 testTime = toGlobalClock(lastCheckpoint); /// @dev  lastCheckpoint > testTime
 
             uint256 maxTime = testTime + MAX_TIME.toUint256();
 
@@ -426,6 +455,7 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to calculate total voting power at some point in the past
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param timestamp Time to calculate the total voting power at
      * @return Total voting power at that time
      */
@@ -439,19 +469,19 @@ library EscrowDelegateCheckpoints {
 
     /**
      * @dev Function to get latest checkpoint of some point in the past
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param timestamp Time to calculate the total voting power at
-     * @return Total voting power at that time
+     * @return The adjusted checkpoint at the provided timestamp
      */
     function _getAdjustedCheckpoint(
         EscrowDelegateStore storage store_,
         uint48 timestamp
     ) internal view returns (Checkpoints.Point memory) {
-        uint48 clockTime = timestamp;
         (bool exists, uint48 lastCheckpointTs, Checkpoints.Point memory lastGlobal) = store_
             ._globalCheckpoints
-            .upperLookupRecent(clockTime);
+            .upperLookupRecent(timestamp);
         if (!exists) return lastGlobal;
-        uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > tesTime
+        uint48 testTime = toGlobalClock(lastCheckpointTs); /// @dev  lastCheckpointTs > testTime
         uint256 maxTime = testTime + MAX_TIME.toUint256();
 
         // Iterate over time until the specified timestamp or maxtime is reached
@@ -477,7 +507,7 @@ library EscrowDelegateCheckpoints {
             if (testTime > maxTime) break;
         }
 
-        int128 change = lastGlobal.slope * uint256(clockTime - lastCheckpointTs).toInt128();
+        int128 change = lastGlobal.slope * uint256(timestamp - lastCheckpointTs).toInt128();
         lastGlobal.bias = lastGlobal.bias < change ? int128(0) : lastGlobal.bias - change;
 
         return lastGlobal;
@@ -487,6 +517,7 @@ library EscrowDelegateCheckpoints {
      * @notice Get the current bias for `escrowId` at `timestamp`
      * @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
      * @dev Fetches last escrow point prior to a certain timestamp, then walks forward to timestamp.
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param escrowId NFT for lock
      * @param timestamp Epoch time to return bias power at
      * @return NFT bias
@@ -506,6 +537,7 @@ library EscrowDelegateCheckpoints {
      * @notice Get the current bias for `escrowId` at `timestamp`
      * @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
      * @dev Fetches last escrow point prior to a certain timestamp, then walks forward to timestamp.
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
      * @param escrowId NFT for lock
      * @param timestamp Epoch time to return bias power at
      * @return NFT bias
@@ -525,6 +557,12 @@ library EscrowDelegateCheckpoints {
         return (lastPoint, ts);
     }
 
+    /**
+     * @notice Get the first escrow point for `escrowId`
+     * @param store_ The EscrowDelegateStore struct containing all the storage mappings
+     * @param escrowId The ID of the escrow lock
+     * @return The first point and the timestamp of the first checkpoint
+     */
     function getFirstEscrowPoint(
         EscrowDelegateStore storage store_,
         uint256 escrowId

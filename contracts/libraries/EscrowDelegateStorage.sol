@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.13;
 
 import {EscrowDelegateCheckpoints} from "./EscrowDelegateCheckpoints.sol";
 
@@ -12,7 +12,7 @@ contract EscrowDelegateStorage {
 
     /// @notice Storage struct for the checkpoint system
     EscrowDelegateCheckpoints.EscrowDelegateStore internal edStore;
-
+    /// @dev Must be reset in initialization for upgradeability
     uint256 MAX_TIME = uint256(uint128(EscrowDelegateCheckpoints.MAX_TIME));
 
     /// @notice Gap for future upgrades
@@ -29,10 +29,6 @@ contract EscrowDelegateStorage {
     function delegateeSlopeChanges(address _delegatee, uint256 _timestamp) external view returns (int128) {
         return edStore.delegateeSlopeChanges[_delegatee][_timestamp];
     }
-
-    /// -----------------------------------------------------------------------
-    ///
-    /// -----------------------------------------------------------------------
 
     function toGlobalClock(uint256 _timestamp) public pure virtual returns (uint48) {
         return EscrowDelegateCheckpoints.toGlobalClock(_timestamp);

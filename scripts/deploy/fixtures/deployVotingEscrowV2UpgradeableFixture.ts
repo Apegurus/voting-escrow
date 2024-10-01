@@ -7,9 +7,12 @@ import {
   ERC20Mock,
   ERC20Mock__factory,
   EscrowDelegateCheckpoints__factory,
+  VeArtProxyUpgradeable,
+  VeArtProxyUpgradeable__factory,
   VotingEscrowV2Upgradeable,
   VotingEscrowV2Upgradeable__factory,
 } from '../../../typechain-types'
+import { ADDRESS_ZERO } from '../../../test/utils'
 
 /**
  * @typedef {Object} DeployVotingEscrowV2UpgradeableFixtureParams
@@ -54,6 +57,7 @@ export async function deployVotingEscrowV2UpgradeableFixture(
   let votingEscrowV2UpgradeableAddress = contractOverrides.votingEscrowV2Upgradeable
   let votingEscrowV2Upgradeable: VotingEscrowV2Upgradeable
   let votingEscrowV2Implementation: string = 'not set'
+  let veArtProxy: VeArtProxyUpgradeable
   if (!votingEscrowV2UpgradeableAddress) {
     logger.warn(`VoteEscrowV2Upgradeable address not provided, deploying new VotingEscrowV2Upgradeable...`)
     const escrowDelegateCheckpoints = await deployManager.deployContract<EscrowDelegateCheckpoints__factory>(
@@ -61,10 +65,22 @@ export async function deployVotingEscrowV2UpgradeableFixture(
       []
     )
 
+    let veArtProxyAddress = contractOverrides.artProxy
+    if (!veArtProxyAddress) {
+      logger.warn(`No artProxy provided in deploy.config, deploying VotingEscrowV2Upgradeable through proxy...`)
+      const { implementationThroughProxy, implementation } =
+        await deployManager.deployUpgradeableContract<VeArtProxyUpgradeable__factory>('VeArtProxyUpgradeable', [], {})
+      veArtProxy = implementationThroughProxy
+      veArtProxyAddress = veArtProxy.address
+    } else {
+      logger.log(`ArtProxy address provided, using existing VeArtProxy ${veArtProxyAddress}...`, '⚙️')
+      veArtProxy = await hre.ethers.getContractAt('VeArtProxyUpgradeable', veArtProxyAddress)
+    }
+
     const { implementationThroughProxy, implementation } =
       await deployManager.deployUpgradeableContract<VotingEscrowV2Upgradeable__factory>(
         'VotingEscrowV2Upgradeable',
-        [veDetails.name, veDetails.symbol, veDetails.version, lockTokenAddress],
+        [veDetails.name, veDetails.symbol, veDetails.version, lockTokenAddress, veArtProxyAddress],
         {},
         {
           libraries: {
@@ -84,11 +100,14 @@ export async function deployVotingEscrowV2UpgradeableFixture(
       `VoteEscrowV2Upgradeable address provided, using existing VotingEscrowV2Upgradeable ${votingEscrowV2UpgradeableAddress}...`,
       '⚙️'
     )
+    const veArtProxyAddress = await votingEscrowV2Upgradeable.artProxy()
+    veArtProxy = await hre.ethers.getContractAt('VeArtProxyUpgradeable', veArtProxyAddress)
   }
 
   return {
     contractOutput: {
       votingEscrowV2Upgradeable,
+      veArtProxy,
       lockToken,
     },
     addressOutput: {

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.13;
 
-import {IVotingEscrowV2Upgradeable} from "../VotingEscrowV2Upgradeable.sol";
+import {IVotingEscrowV2} from "../VotingEscrowV2Upgradeable.sol";
 import {EscrowDelegateCheckpoints, Checkpoints} from "../libraries/EscrowDelegateCheckpoints.sol";
 import {SafeCastLibrary} from "../libraries/SafeCastLibrary.sol";
 
 contract VotingEscrowTestHelper {
-    IVotingEscrowV2Upgradeable public votingEscrow;
+    IVotingEscrowV2 public votingEscrow;
     using SafeCastLibrary for uint256;
     using SafeCastLibrary for int128;
 
     constructor(address _votingEscrow) {
-        votingEscrow = IVotingEscrowV2Upgradeable(_votingEscrow);
+        votingEscrow = IVotingEscrowV2(_votingEscrow);
         votingEscrow.token().approve(address(votingEscrow), type(uint256).max);
     }
 
@@ -34,7 +34,7 @@ contract VotingEscrowTestHelper {
     /// @param _timestamp Epoch time to return voting power at
     /// @return balance ser voting power
     function balanceOfLockAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256 balance) {
-        IVotingEscrowV2Upgradeable.LockDetails memory lockDetails = votingEscrow.lockDetails(_tokenId);
+        IVotingEscrowV2.LockDetails memory lockDetails = votingEscrow.lockDetails(_tokenId);
         (Checkpoints.Point memory point, ) = votingEscrow.getPastEscrowPoint(_tokenId, _timestamp);
         if (lockDetails.isPermanent || point.permanent > 0) return lockDetails.amount;
         if (lockDetails.startTime > _timestamp) return 0;

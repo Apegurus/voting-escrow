@@ -6,7 +6,7 @@ import '@nomicfoundation/hardhat-chai-matchers'
 
 import { deployVotingEscrowFixture } from './fixtures/deployVotingEscrow'
 import { isWithinLimit } from './utils'
-import { VotingEscrow, VotingEscrowTestHelper, VotingEscrowV2Upgradeable } from '../typechain-types'
+import { VotingEscrowTestHelper, VotingEscrowV2Upgradeable } from '../typechain-types'
 import { BigNumber } from 'ethers'
 import { chunk } from 'lodash'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
@@ -25,8 +25,7 @@ import { token } from '../typechain-types/@openzeppelin/contracts'
 async function fixture() {
   // Contracts are deployed using the first signer/account by default
   const accounts = await ethers.getSigners()
-  const votingEscrowUpgradeable = true
-  const deployment = await deployVotingEscrowFixture(ethers, votingEscrowUpgradeable)
+  const deployment = await deployVotingEscrowFixture(ethers)
   return { ...deployment, accounts }
 }
 
@@ -41,7 +40,7 @@ async function mineAndGetLatestTime() {
 
 async function validateState(
   state: any,
-  votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable,
+  votingEscrow: VotingEscrowV2Upgradeable,
   votingEscrowTestHelper: VotingEscrowTestHelper,
   testTime: number
 ) {
@@ -126,7 +125,7 @@ async function validateState(
 async function finalStateCheck(
   state: any,
   historyState: any,
-  votingEscrow: VotingEscrow | VotingEscrowV2Upgradeable,
+  votingEscrow: VotingEscrowV2Upgradeable,
   votingEscrowTestHelper: VotingEscrowTestHelper
 ) {
   const testTimes = Object.keys(historyState)
@@ -194,7 +193,7 @@ async function createManyLocks(
   return { state, latestTokenId }
 }
 
-describe('VotingEscrow', function () {
+describe('VotingEscrowV2Upgradeable', function () {
   it('Should be able to load fixture', async () => {
     const loadedFixture = await loadFixture(fixture)
 
@@ -290,7 +289,7 @@ describe('VotingEscrow', function () {
 
         await expect(connectedEscrow.increaseAmount(123, 1000000000000)).to.be.revertedWithCustomError(
           connectedEscrow,
-          'NoLockFound'
+          'ERC721NonexistentToken'
         )
       })
 
