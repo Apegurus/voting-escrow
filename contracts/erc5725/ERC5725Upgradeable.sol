@@ -29,7 +29,12 @@ abstract contract ERC5725Upgradeable is Initializable, IERC5725Upgradeable, ERC7
         _disableInitializers();
     }
 
-    function __ERC5725_init(string memory name_, string memory symbol_) internal initializer {
+    /**
+     * @notice Initializes the contract with the given name and symbol.
+     * @param name_ The name of the token.
+     * @param symbol_ The symbol of the token.
+     */
+    function __ERC5725_init(string memory name_, string memory symbol_) internal onlyInitializing {
         __ERC721_init(name_, symbol_);
         /// @dev Currently this call does nothing, but it is left here for future compatibility.
         __ERC721Enumerable_init();
@@ -101,7 +106,7 @@ abstract contract ERC5725Upgradeable is Initializable, IERC5725Upgradeable, ERC7
      */
     function claimablePayout(
         uint256 tokenId
-    ) public view override(IERC5725Upgradeable) validToken(tokenId) returns (uint256 payout) {
+    ) public view virtual override(IERC5725Upgradeable) validToken(tokenId) returns (uint256 payout) {
         return vestedPayout(tokenId) - _payoutClaimed[tokenId];
     }
 
@@ -166,7 +171,7 @@ abstract contract ERC5725Upgradeable is Initializable, IERC5725Upgradeable, ERC7
      * @param tokenId The NFT `tokenId`.
      */
     function isApprovedClaimOrOwner(address operator, uint256 tokenId) public view virtual returns (bool) {
-        address owner = ownerOf(tokenId);
+        address owner = _ownerOf(tokenId);
         return (operator == owner || isClaimApprovedForAll(owner, operator) || getClaimApproved(tokenId) == operator);
     }
 
@@ -189,7 +194,7 @@ abstract contract ERC5725Upgradeable is Initializable, IERC5725Upgradeable, ERC7
      * @param tokenId The NFT `tokenId`.
      */
     function _setClaimApproval(address operator, uint256 tokenId) internal virtual {
-        if (ownerOf(tokenId) != msg.sender) revert ERC721IncorrectOwner(msg.sender, tokenId, ownerOf(tokenId));
+        if (_ownerOf(tokenId) != msg.sender) revert ERC721IncorrectOwner(msg.sender, tokenId, _ownerOf(tokenId));
         _tokenIdApprovals[tokenId] = operator;
     }
 

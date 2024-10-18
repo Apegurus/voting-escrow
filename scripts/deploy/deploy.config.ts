@@ -52,6 +52,7 @@ export interface DeploymentContractOverrides {
   votingEscrowV2Upgradeable?: string
   escrowWeightLens?: string
   proxyAdminAddress?: string
+  artProxy?: string
 }
 
 /**
@@ -95,6 +96,7 @@ const deployableNetworkConfig: Record<
         // lockToken: contractOverrides?.lockToken || '0x2F760FCb977AF39E94A3E074dcd3649a16F8652C',
         votingEscrowV2Upgradeable: contractOverrides?.votingEscrowV2Upgradeable || '',
         proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
+        artProxy: contractOverrides?.artProxy || '',
       },
       wNative: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
       veDetails: {
@@ -118,6 +120,7 @@ const deployableNetworkConfig: Record<
         lockToken: contractOverrides?.lockToken || '0xedb8b85a779e872e2aeef39df96a7fcc7d5ea6af',
         votingEscrowV2Upgradeable: contractOverrides?.votingEscrowV2Upgradeable || '',
         proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
+        artProxy: contractOverrides?.artProxy || '',
       },
       wNative: '0x',
       veDetails: {
@@ -142,6 +145,7 @@ const deployableNetworkConfig: Record<
         lockToken: contractOverrides?.lockToken || '',
         votingEscrowV2Upgradeable: contractOverrides?.votingEscrowV2Upgradeable || '',
         proxyAdminAddress: contractOverrides?.proxyAdminAddress || '',
+        artProxy: contractOverrides?.artProxy || '',
       },
       wNative: '0x',
       veDetails: {

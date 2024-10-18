@@ -21,6 +21,7 @@
         "OPENAI",
         "POLYGONSCAN",
         "precommit",
+        "remappings",
         "semgrep",
         "Snapshotter",
         "telos",
@@ -28,6 +29,7 @@
         "timepoint",
         "timepoints",
         "TYPEHASH",
+        "Versionable",
         "WBNB"
     ]
 }

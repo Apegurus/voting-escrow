@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.13;
+pragma solidity ^0.8.0;
 
-import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import {IVotes} from "./IVotes.sol";
 import {Checkpoints} from "../libraries/Checkpoints.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/IERC721EnumerableUpgradeable.sol";
+import {IVersionable} from "./IVersionable.sol";
 
-interface IVotingEscrowV2 is IERC5805, IERC721Enumerable {
+/**
+ * @title Voting Escrow V2 Interface for Upgrades
+ */
+interface IVotingEscrowV2 is IVotes, IERC721EnumerableUpgradeable, IVersionable {
     struct LockDetails {
         uint256 amount; /// @dev amount of tokens locked
         uint256 startTime; /// @dev when locking started
@@ -55,21 +59,24 @@ interface IVotingEscrowV2 is IERC5805, IERC721Enumerable {
     error LockDurationTooLong();
     error LockExpired();
     error LockNotExpired();
-    error NoLockFound();
+    error LockHoldsValue();
+    error LockModifiedDelay();
     error NotPermanentLock();
     error PermanentLock();
     error PermanentLockMismatch();
     error SameNFT();
     error SignatureExpired();
     error ZeroAmount();
-    error LockHoldsValue();
     error NotLockOwner();
 
     function supply() external view returns (uint);
 
-    function token() external view returns (IERC20);
+    function token() external view returns (IERC20Upgradeable);
+
+    function totalNftsMinted() external view returns (uint256);
 
     function balanceOfNFT(uint256 _tokenId) external view returns (uint256);
+
     function balanceOfNFTAt(uint256 _tokenId, uint256 _timestamp) external view returns (uint256);
 
     function delegates(uint256 tokenId, uint48 timestamp) external view returns (address);
@@ -111,6 +118,4 @@ interface IVotingEscrowV2 is IERC5805, IERC721Enumerable {
     function burn(uint256 _tokenId) external;
 
     function decimals() external view returns (uint8);
-
-    function maxTime() external view returns (uint256);
 }
